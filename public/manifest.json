@@ -1,0 +1,27 @@
+{
+  "name": "Evigo — Real-time Event Services",
+  "short_name": "Evigo",
+  "description": "Book trusted event service providers in minutes. Catering, Photography, DJ, Mehendi & Makeup, and Cultural services across Bihar.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#8b5cf6",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["business", "lifestyle"],
+  "lang": "en",
+  "dir": "ltr"
+}
