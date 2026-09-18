@@ -4,6 +4,7 @@ export const SERVICE_CATEGORIES = [
   "DJ",
   "Mehendi & Makeup",
   "Restaurant",
+  "Transport",
 ] as const;
 
 export type ServiceCategory = (typeof SERVICE_CATEGORIES)[number];
@@ -14,6 +15,7 @@ export const CATEGORY_TAGLINE: Record<ServiceCategory, string> = {
   DJ:                "Party-ready sound, lights, and vibes",
   "Mehendi & Makeup":"Bridal mehendi and makeover artists",
   Restaurant:        "Verified hotels, banquets, and fine dining",
+  Transport:         "Cabs, car rentals, and local travel",
 };
 
 export const CATEGORY_IMAGE: Record<ServiceCategory, string> = {
@@ -22,6 +24,7 @@ export const CATEGORY_IMAGE: Record<ServiceCategory, string> = {
   DJ:                "/dj_service_1777314281684.png",
   "Mehendi & Makeup":"/mehendi_service_1777314296728.png",
   Restaurant:        "/partners/events/genx_brij/genx_brij_1.png",
+  Transport:         "/partners/transport_faabcab.png",
 };
 
 export const EMPOWERMENT_IMAGES: { src: string; label: string; sub: string; accent: string }[] = [
@@ -92,6 +95,12 @@ export const TRUSTED_PARTNERS: TrustedPartner[] = [
     location: "Jamui, Bihar",
     description: "A/C banquet hall, restaurant & conference facilities.",
     image: "/partners/events/nirmala_inn/nirmala_inn_1.png",
+  },
+  {
+    name: "Shagun Vatika",
+    location: "Jamui, Bihar",
+    description: "Best hotels and banquet hall booking service providers in Jamui.",
+    image: "/partners/hotel_shagun_vatika.jpeg",
   },
 ];
 
@@ -195,6 +204,26 @@ export const HOTEL_PARTNERS: HotelPartner[] = [
     priceRange: "₹800–₹2,500/night",
     description: "Fully A/C banquet hall, multi-cuisine restaurant, family suites and conference facilities.",
   },
+  {
+    id: "hotel-shagun-vatika",
+    name: "Shagun Vatika",
+    address: "Jamui, Bihar — Premier hotel & banquet venue",
+    city: "Jamui",
+    districtBihar: "Jamui",
+    lat: 24.9278,
+    lng: 86.2265,
+    category: "hotel",
+    photos: [
+      "/partners/events/shagun_vatika/shagun_vatika_1.jpeg",
+      "/partners/events/shagun_vatika/shagun_vatika_2.jpeg",
+      "/partners/events/shagun_vatika/shagun_vatika_3.jpeg",
+      "/partners/events/shagun_vatika/shagun_vatika_4.jpeg",
+      "/partners/events/shagun_vatika/shagun_vatika_5.jpeg",
+    ],
+    phone: "+91 9473455717",
+    priceRange: "₹1,500–₹4,000/night",
+    description: "Best hotels and banquet hall booking service providers in Jamui.",
+  }
 ];
 
 // ── Bihar City Centroids (for city-dropdown & manual search fallback) ──
@@ -373,7 +402,78 @@ export const EVENT_VENUES: EventVenue[] = [
     safetyFeatures: ["CCTV Surveillance", "Fire Safety", "24/7 Security"],
     services: ["Room Booking", "Banquet Hall Booking", "Restaurant", "Conference Room", "Event Catering"],
   },
+  {
+    id: "shagun-vatika",
+    name: "Shagun Vatika",
+    location: "Jamui, Bihar",
+    city: "Jamui",
+    address: "Jamui, Bihar — Premier hotel & banquet venue",
+    phone: "+91 9473455717",
+    priceRange: "₹1,500–₹4,000/night",
+    description: "Best hotels and banquet hall booking service providers in Jamui.",
+    images: [
+      "/partners/events/shagun_vatika/shagun_vatika_1.jpeg",
+      "/partners/events/shagun_vatika/shagun_vatika_2.jpeg",
+      "/partners/events/shagun_vatika/shagun_vatika_3.jpeg",
+      "/partners/events/shagun_vatika/shagun_vatika_4.jpeg",
+      "/partners/events/shagun_vatika/shagun_vatika_5.jpeg",
+    ],
+    googleRating: 4.5,
+    reviewCount: 0,
+    safetyFeatures: ["CCTV Surveillance", "Fire Safety"],
+    services: ["Room Booking", "Banquet Hall", "Restaurant & Dining", "Conference Room"],
+  }
 ];
+
+// ── Demo Providers & Seeding ──────────────────────────────────
+export const PROVIDERS_KEY = "sev_demo_providers_v1";
+
+export interface DemoProvider {
+  id: string;
+  ownerUid: string;
+  ownerName: string;
+  businessName: string;
+  category: ServiceCategory;
+  phone: string;
+  city: string;
+  startingPrice: number;
+  experienceYears: number;
+  description: string;
+  imageUrl: string;
+  createdAt: number;
+  isActive: boolean;
+}
+
+export function getDemoProviders(): DemoProvider[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(PROVIDERS_KEY);
+    const providers = raw ? (JSON.parse(raw) as DemoProvider[]) : [];
+    // Ensure FaabCab transport provider is present
+    const hasFaabCab = providers.some(p => p.businessName === "FaabCab");
+    if (!hasFaabCab) {
+      providers.push({
+        id: "faab-cab",
+        ownerUid: "faab-cab-owner",
+        ownerName: "FaabCab",
+        businessName: "FaabCab",
+        category: "Transport",
+        phone: "",
+        city: "Jamui",
+        startingPrice: 0,
+        experienceYears: 0,
+        description: "Transport services across Jamui and nearby routes.",
+        imageUrl: "/partners/transport_faabcab.png",
+        createdAt: Date.now(),
+        isActive: true,
+      });
+      localStorage.setItem(PROVIDERS_KEY, JSON.stringify(providers));
+    }
+    return providers;
+  } catch {
+    return [];
+  }
+}
 
 // ── Tourism Places ────────────────────────────────────────────
 export interface TourismPlace {
