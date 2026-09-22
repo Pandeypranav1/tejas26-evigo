@@ -40,15 +40,20 @@ export default function ClientDashboard() {
             if (!localIds.has(sb.id)) {
               mine.unshift({
                 id: sb.id,
-                providerId: sb.provider_id || "faab-cab",
+                providerId: sb.provider_id || sb.provider_uuid || "faab-cab",
                 providerOwnerUid: "faab-cab-owner",
                 clientUid: sb.client_id || user.id,
                 clientPhone: sb.customer_phone || "",
                 customerName: sb.customer_name,
                 customerEmail: sb.customer_email,
                 serviceType: sb.service_type,
-                eventDate: sb.event_date || "",
-                location: sb.city || "Jamui, Bihar",
+                transportService: sb.transport_service || sb.service_type,
+                pickupLocation: sb.pickup_location,
+                dropLocation: sb.drop_location,
+                pickupTime: sb.pickup_time || sb.event_time,
+                passengerCount: sb.passenger_count || sb.guest_count,
+                eventDate: sb.travel_date || sb.event_date || "",
+                location: sb.pickup_location && sb.drop_location ? `${sb.pickup_location} → ${sb.drop_location}` : (sb.city || "Jamui, Bihar"),
                 notes: sb.message || "",
                 status: sb.status || "pending",
                 createdAt: new Date(sb.created_at || Date.now()).getTime(),
@@ -174,7 +179,7 @@ export default function ClientDashboard() {
                   className="rounded-2xl border border-zinc-200 bg-white p-5 hover:shadow-md transition-all duration-300"
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
+                    <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
                         <div className="text-base font-black text-zinc-900">
                           {b.providerId === "faab-cab" || b.serviceType === "Transport" ? "🚗 FaabCab Transport Booking" : "Booking Request"}
@@ -193,15 +198,24 @@ export default function ClientDashboard() {
                           {statusLabel[b.status]}
                         </span>
                       </div>
-                      <div className="text-xs font-semibold text-zinc-600">📅 Date: {b.eventDate}</div>
-                      <div className="text-xs font-semibold text-zinc-600 mt-0.5">📍 Details: {b.location}</div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs font-semibold text-zinc-600 mt-2">
+                        {b.transportService && <div>🚗 <strong>Service:</strong> {b.transportService}</div>}
+                        {b.pickupLocation && <div>📍 <strong>Pickup:</strong> {b.pickupLocation}</div>}
+                        {b.dropLocation && <div>🏁 <strong>Destination:</strong> {b.dropLocation}</div>}
+                        <div>📅 <strong>Travel Date:</strong> {b.eventDate}</div>
+                        {b.pickupTime && <div>⏰ <strong>Pickup Time:</strong> {b.pickupTime}</div>}
+                        {b.passengerCount && <div>👥 <strong>Passengers:</strong> {b.passengerCount}</div>}
+                        {!b.pickupLocation && <div>📍 <strong>Location:</strong> {b.location}</div>}
+                      </div>
+
                       {b.notes && (
-                        <div className="mt-2 text-xs text-zinc-500 bg-zinc-50 p-2.5 rounded-lg border border-zinc-100">
-                          💬 {b.notes}
+                        <div className="mt-3 text-xs text-zinc-600 bg-zinc-50 p-3 rounded-xl border border-zinc-200/60">
+                          💬 <strong>Special Request:</strong> "{b.notes}"
                         </div>
                       )}
                     </div>
-                    <div className="text-xs font-mono text-zinc-400">
+                    <div className="text-xs font-mono text-zinc-400 shrink-0">
                       ID: #{b.id.slice(-8)}
                     </div>
                   </div>

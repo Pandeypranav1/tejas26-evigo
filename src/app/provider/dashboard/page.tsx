@@ -47,15 +47,20 @@ export default function ProviderDashboard() {
             if (!localIds.has(sb.id)) {
               myBookings.unshift({
                 id: sb.id,
-                providerId: sb.provider_id || "faab-cab",
+                providerId: sb.provider_id || sb.provider_uuid || "faab-cab",
                 providerOwnerUid: "faab-cab-owner",
                 clientUid: sb.client_id || "guest",
                 clientPhone: sb.customer_phone || "",
                 customerName: sb.customer_name,
                 customerEmail: sb.customer_email,
                 serviceType: sb.service_type,
-                eventDate: sb.event_date || "",
-                location: sb.city || "Jamui, Bihar",
+                transportService: sb.transport_service || sb.service_type,
+                pickupLocation: sb.pickup_location,
+                dropLocation: sb.drop_location,
+                pickupTime: sb.pickup_time || sb.event_time,
+                passengerCount: sb.passenger_count || sb.guest_count,
+                eventDate: sb.travel_date || sb.event_date || "",
+                location: sb.pickup_location && sb.drop_location ? `${sb.pickup_location} → ${sb.drop_location}` : (sb.city || "Jamui, Bihar"),
                 notes: sb.message || "",
                 status: sb.status || "pending",
                 createdAt: new Date(sb.created_at || Date.now()).getTime(),
@@ -260,13 +265,17 @@ export default function ProviderDashboard() {
                     <div className="space-y-1.5 text-xs text-zinc-600 mb-3 font-medium">
                       {b.clientPhone && <div>📞 <strong>Phone:</strong> {b.clientPhone}</div>}
                       {b.customerEmail && <div>✉️ <strong>Email:</strong> {b.customerEmail}</div>}
-                      {b.serviceType && <div>🚗 <strong>Service:</strong> {b.serviceType}</div>}
-                      <div>📍 <strong>Location / Route:</strong> {b.location}</div>
+                      {b.transportService && <div>🚗 <strong>Service:</strong> {b.transportService}</div>}
+                      {b.pickupLocation && <div>📍 <strong>Pickup:</strong> {b.pickupLocation}</div>}
+                      {b.dropLocation && <div>🏁 <strong>Destination:</strong> {b.dropLocation}</div>}
+                      {b.pickupTime && <div>⏰ <strong>Time:</strong> {b.pickupTime}</div>}
+                      {b.passengerCount && <div>👥 <strong>Passengers:</strong> {b.passengerCount}</div>}
+                      {!b.pickupLocation && <div>📍 <strong>Location:</strong> {b.location}</div>}
                     </div>
 
                     {b.notes && (
                       <div className="p-3 bg-zinc-50 border border-zinc-200/60 rounded-xl text-xs text-zinc-700 font-medium">
-                        💬 "{b.notes}"
+                        💬 Special Request: "{b.notes}"
                       </div>
                     )}
                   </div>

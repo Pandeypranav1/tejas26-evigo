@@ -110,12 +110,17 @@ export default function FaabCabPartnerPage() {
     setSubmitting(true);
 
     try {
+      const matchedService = FAABCAB_SERVICES.find((s) => s.title === selectedService);
+      const serviceId = matchedService?.id || "inter-city";
+
       // 1. Submit to Supabase API
       const res = await fetch("/api/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           provider_id: "faab-cab",
+          provider_uuid: "faab-cab",
+          service_id: serviceId,
           provider_name: "FaabCab",
           service_type: "Transport",
           transport_service: selectedService,
@@ -128,6 +133,7 @@ export default function FaabCabPartnerPage() {
           pickup_time: pickupTime,
           passenger_count: Number(passengerCount),
           special_request: specialRequest.trim(),
+          message: specialRequest.trim() || null,
           city: "Jamui, Bihar",
         }),
       });
