@@ -1,12 +1,7 @@
+'use client';
+
 import React, { useState } from "react";
 import { PageContainer } from "@/components/PageContainer";
-
-export const metadata = {
-  title: "Contact Us - Evigo",
-  description: "Get in touch with the Evigo team for support, partnerships, or inquiries.",
-};
-
-'use client';
 
 export default function ContactPage() {
   const [name, setName] = useState("");
@@ -27,29 +22,38 @@ export default function ContactPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("[Contact] Submit triggered");
     setError(null);
     setSuccess(null);
+
     const validationError = validate();
     if (validationError) {
       setError(validationError);
       return;
     }
+
     setLoading(true);
     try {
+      console.log("[Contact] Sending POST /api/contact");
       const res = await fetch("/api/contact", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, message }),
       });
+      console.log("[Contact] Response status:", res.status);
       const data = await res.json();
+      console.log("[Contact] Response body:", data);
+
       if (!res.ok) {
         throw new Error(data?.error || "Failed to send message");
       }
-      setSuccess(data.message || "Message sent successfully.");
+
+      setSuccess(data.message || "Message sent successfully!");
       setName("");
       setEmail("");
       setMessage("");
     } catch (err: any) {
+      console.error("[Contact] Error:", err);
       setError(err.message || "An unexpected error occurred");
     } finally {
       setLoading(false);
@@ -71,7 +75,7 @@ export default function ContactPage() {
               Get in Touch
             </h1>
             <p className="text-lg sm:text-xl text-white/60">
-              We'd love to hear from you. Reach out to the Evigo team for support, partnerships, or any inquiries.
+              We&apos;d love to hear from you. Reach out to the Evigo team for support, partnerships, or any inquiries.
             </p>
           </div>
 
@@ -117,8 +121,18 @@ export default function ContactPage() {
 
             <form className="bg-white/5 border border-white/10 rounded-3xl p-6 sm:p-8 backdrop-blur-sm flex flex-col gap-4" onSubmit={handleSubmit}>
               <h2 className="text-2xl font-bold mb-2">Send a Message</h2>
-              {error && <p className="text-red-400 text-sm">{error}</p>}
-              {success && <p className="text-green-400 text-sm">{success}</p>}
+
+              {success && (
+                <div className="bg-green-500/10 border border-green-500/30 rounded-xl px-4 py-3">
+                  <p className="text-green-400 text-sm font-medium">{success}</p>
+                </div>
+              )}
+              {error && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3">
+                  <p className="text-red-400 text-sm font-medium">{error}</p>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-1">Name</label>
                 <input

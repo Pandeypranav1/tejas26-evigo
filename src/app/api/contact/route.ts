@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createAdminClient } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
 
 interface ContactMessage {
   name: string;
@@ -28,21 +28,41 @@ export async function POST(req: Request) {
 
     const { name, email, message } = payload as ContactMessage;
 
-    const supabase = createAdminClient();
-    const { data, error } = await supabase
+    // Create a Supabase client with the anon key on the server side.
+    // The service role key in .env.local is not a standard JWT, so it does
+    // not bypass RLS. Instead we use the anon key and rely on the existing
+    // RLS INSERT policy that was configured for the contact_messages table.
+    // The anon key is safe here because this code runs only on the server.
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      }
+    );
+
+    // Do not chain .select() — the RLS policy may only allow INSERT, not SELECT.
+    const { error } = await supabase
       .from('contact_messages')
-      .insert({ name, email, message })
-      .select();
+      .insert({ name: name.trim(), email: email.trim(), message: message.trim() });
 
     if (error) {
       console.error('Supabase insert error:', error);
-      // Return detailed error for debugging
-      return NextResponse.json({ error: error.message, details: error }, { status: 500 });
+      return NextResponse.json(
+        { error: 'Failed to save your message. Please try again later.' },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json({ message: 'Message sent successfully.' }, { status: 200 });
+    return NextResponse.json({ message: 'Message sent successfully!' }, { status: 200 });
   } catch (err: any) {
     console.error('Unexpected error in /api/contact:', err);
-    return NextResponse.json({ error: err.message || 'Unexpected error' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'An unexpected error occurred. Please try again.' },
+      { status: 500 }
+    );
   }
 }
