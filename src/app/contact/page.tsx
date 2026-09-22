@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { PageContainer } from "@/components/PageContainer";
 
 export const metadata = {
@@ -6,7 +6,56 @@ export const metadata = {
   description: "Get in touch with the Evigo team for support, partnerships, or inquiries.",
 };
 
+'use client';
+
 export default function ContactPage() {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  const validate = () => {
+    if (!name.trim()) return "Name is required";
+    if (!email.trim()) return "Email is required";
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) return "Invalid email address";
+    if (!message.trim()) return "Message is required";
+    return null;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+    const validationError = validate();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, message }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to send message");
+      }
+      setSuccess(data.message || "Message sent successfully.");
+      setName("");
+      setEmail("");
+      setMessage("");
+    } catch (err: any) {
+      setError(err.message || "An unexpected error occurred");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="flex min-h-screen flex-col bg-[#05030f] text-white selection:bg-violet-500/30 relative w-full overflow-x-hidden">
       {/* Background gradients */}
@@ -22,7 +71,7 @@ export default function ContactPage() {
               Get in Touch
             </h1>
             <p className="text-lg sm:text-xl text-white/60">
-              We&apos;d love to hear from you. Reach out to the Evigo team for support, partnerships, or any inquiries.
+              We'd love to hear from you. Reach out to the Evigo team for support, partnerships, or any inquiries.
             </p>
           </div>
 
@@ -36,10 +85,7 @@ export default function ContactPage() {
                   </div>
                   <div>
                     <div className="font-bold text-sm mb-0.5">Email</div>
-                    <a
-                      href="mailto:support.evigo@gmail.com"
-                      className="text-white/70 hover:text-cyan-400 text-sm transition-colors"
-                    >
+                    <a href="mailto:support.evigo@gmail.com" className="text-white/70 hover:text-cyan-400 text-sm transition-colors">
                       support.evigo@gmail.com
                     </a>
                   </div>
@@ -51,10 +97,7 @@ export default function ContactPage() {
                   </div>
                   <div>
                     <div className="font-bold text-sm mb-0.5">Phone</div>
-                    <a
-                      href="tel:+917808807340"
-                      className="text-white/70 hover:text-cyan-400 text-sm transition-colors"
-                    >
+                    <a href="tel:+917808807340" className="text-white/70 hover:text-cyan-400 text-sm transition-colors">
                       7808807340
                     </a>
                   </div>
@@ -66,22 +109,24 @@ export default function ContactPage() {
                   </div>
                   <div>
                     <div className="font-bold text-sm mb-0.5">Location</div>
-                    <div className="text-white/70 text-sm">
-                      Samastipur, Bihar, India
-                    </div>
+                    <div className="text-white/70 text-sm">Samastipur, Bihar, India</div>
                   </div>
                 </div>
               </div>
             </div>
 
-            <form className="bg-white/5 border border-white/10 rounded-3xl p-6 sm:p-8 backdrop-blur-sm flex flex-col gap-4">
+            <form className="bg-white/5 border border-white/10 rounded-3xl p-6 sm:p-8 backdrop-blur-sm flex flex-col gap-4" onSubmit={handleSubmit}>
               <h2 className="text-2xl font-bold mb-2">Send a Message</h2>
+              {error && <p className="text-red-400 text-sm">{error}</p>}
+              {success && <p className="text-green-400 text-sm">{success}</p>}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-white/60 mb-1">Name</label>
                 <input
                   type="text"
                   className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors"
                   placeholder="Your name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                 />
               </div>
               <div>
@@ -90,6 +135,8 @@ export default function ContactPage() {
                   type="email"
                   className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors"
                   placeholder="your@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
               <div>
@@ -97,13 +144,16 @@ export default function ContactPage() {
                 <textarea
                   className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm focus:outline-none focus:border-violet-500 transition-colors h-24 resize-none"
                   placeholder="How can we help you?"
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
                 />
               </div>
               <button
-                type="button"
-                className="w-full bg-gradient-to-r from-violet-600 to-cyan-500 text-white font-bold rounded-xl py-3 mt-2 shadow-[0_0_20px_rgba(139,92,246,0.3)] hover:shadow-[0_0_30px_rgba(56,189,248,0.5)] transition-all cursor-pointer border-none"
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-violet-600 to-cyan-500 text-white font-bold rounded-xl py-3 mt-2 shadow-[0_0_20px_rgba(139,92,246,0.3)] hover:shadow-[0_0_30px_rgba(56,189,248,0.5)] transition-all cursor-pointer border-none disabled:opacity-50"
               >
-                Send Message
+                {loading ? "Sending..." : "Send Message"}
               </button>
             </form>
           </div>
