@@ -26,9 +26,41 @@ export default function ClientDashboard() {
       return;
     }
 
-    const loadData = () => {
+    const loadData = async () => {
       const all = getDemoBookings();
-      const mine = all.filter((b) => b.clientUid === user.id);
+      const mine = [...all.filter((b) => b.clientUid === user.id)];
+
+      try {
+        const queryParam = user.email ? `email=${encodeURIComponent(user.email)}` : `client_id=${user.id}`;
+        const res = await fetch(`/api/bookings?${queryParam}`);
+        const data = await res.json();
+        if (data.success && Array.isArray(data.bookings)) {
+          const localIds = new Set(mine.map((b) => b.id));
+          for (const sb of data.bookings) {
+            if (!localIds.has(sb.id)) {
+              mine.unshift({
+                id: sb.id,
+                providerId: sb.provider_id || "faab-cab",
+                providerOwnerUid: "faab-cab-owner",
+                clientUid: sb.client_id || user.id,
+                clientPhone: sb.customer_phone || "",
+                customerName: sb.customer_name,
+                customerEmail: sb.customer_email,
+                serviceType: sb.service_type,
+                eventDate: sb.event_date || "",
+                location: sb.city || "Jamui, Bihar",
+                notes: sb.message || "",
+                status: sb.status || "pending",
+                createdAt: new Date(sb.created_at || Date.now()).getTime(),
+                updatedAt: Date.now(),
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[ClientDashboard] Error fetching Supabase bookings:", err);
+      }
+
       setBookings(mine);
     };
 
@@ -54,12 +86,24 @@ export default function ClientDashboard() {
     rejected: "❌ Rejected",
   };
 
+  if (loading || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#05030f] text-white">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
+          <span className="text-xs font-bold tracking-wider text-white/50 uppercase">
+            Loading Client Dashboard...
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <main className="flex-1 py-10">
+    <main className="flex-1 py-10 bg-zinc-50 min-h-[90vh]">
       <Container>
         {/* Profile Header Card */}
         <div className="bg-white rounded-3xl border border-zinc-200 shadow-sm p-6 sm:p-8 flex flex-col sm:flex-row items-center sm:items-start gap-6 sm:gap-8 relative overflow-hidden">
-          {/* Subtle background decoration */}
           <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 rounded-full bg-cyan-500/10 blur-3xl pointer-events-none"></div>
           <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-64 h-64 rounded-full bg-violet-500/10 blur-3xl pointer-events-none"></div>
           
@@ -74,18 +118,23 @@ export default function ClientDashboard() {
                   👤 Client Dashboard
                 </div>
                 <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-zinc-900">
-                  Welcome, {user?.phone || "Guest"}
+                  Welcome, {user?.email || "Guest"}
                 </h1>
                 <p className="mt-2 text-sm font-medium text-zinc-500 max-w-lg mx-auto sm:mx-0">
-                  Track your event bookings, manage your profile, and explore top-rated services for your next event.
+                  Track your transport bookings, venue requests, and explore top-rated services for your trip or event.
                 </p>
               </div>
               
               <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto mt-2 lg:mt-0">
-                <Link href="/explore" className="w-full sm:w-auto">
-                  <Button className="w-full shadow-lg shadow-cyan-500/20 bg-gradient-to-r from-cyan-500 to-blue-500 border-0 text-white hover:opacity-90">Book a Service</Button>
+                <Link href="/travel-tourism/faabcab" className="w-full sm:w-auto">
+                  <Button className="w-full shadow-lg shadow-cyan-500/20 bg-gradient-to-r from-cyan-500 to-violet-600 border-0 text-white font-bold text-xs py-2.5 px-4">
+                    Book Transport
+                  </Button>
                 </Link>
-                <Button variant="secondary" onClick={handleSignOut} className="w-full sm:w-auto hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors">
+                <Link href="/explore" className="w-full sm:w-auto">
+                  <Button variant="secondary" className="w-full text-xs py-2.5 px-4">Explore Events</Button>
+                </Link>
+                <Button variant="secondary" onClick={handleSignOut} className="w-full sm:w-auto text-xs py-2.5 px-4 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors">
                   Sign Out
                 </Button>
               </div>
@@ -95,28 +144,41 @@ export default function ClientDashboard() {
 
         {/* Bookings */}
         <div className="mt-8">
+          <h2 className="text-xl font-black text-zinc-900 mb-4 flex items-center gap-2">
+            <span>📋</span> Your Bookings & Transport Requests ({bookings.length})
+          </h2>
+
           {bookings.length === 0 ? (
             <div className="rounded-3xl border-2 border-dashed border-zinc-200 bg-white p-12 text-center">
-              <div style={{ fontSize: 48 }} className="mb-4">📋</div>
+              <div style={{ fontSize: 48 }} className="mb-4">🚗</div>
               <div className="text-xl font-black text-zinc-800">No bookings yet</div>
               <div className="mt-2 text-sm font-semibold text-zinc-500 max-w-xs mx-auto">
-                Head to Explore and click &ldquo;Book Now&rdquo; on any provider.
+                Book transport with FaabCab or explore venue providers to get started.
               </div>
-              <Link href="/explore" className="inline-block mt-6">
-                <Button>Explore Providers →</Button>
-              </Link>
+              <div className="flex justify-center gap-3 mt-6">
+                <Link href="/travel-tourism/faabcab">
+                  <Button className="bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-bold text-xs">
+                    Book FaabCab Transport
+                  </Button>
+                </Link>
+                <Link href="/explore">
+                  <Button variant="secondary" className="text-xs">Explore Providers</Button>
+                </Link>
+              </div>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               {bookings.map((b) => (
                 <div
                   key={b.id}
-                  className="rounded-2xl border border-zinc-200 bg-white p-5 hover:shadow-sm transition"
+                  className="rounded-2xl border border-zinc-200 bg-white p-5 hover:shadow-md transition-all duration-300"
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <div className="flex items-center gap-2 mb-2">
-                        <div className="text-sm font-black text-zinc-900">Booking Request</div>
+                        <div className="text-base font-black text-zinc-900">
+                          {b.providerId === "faab-cab" || b.serviceType === "Transport" ? "🚗 FaabCab Transport Booking" : "Booking Request"}
+                        </div>
                         <span
                           style={{
                             background: `${statusColor[b.status]}15`,
@@ -131,14 +193,16 @@ export default function ClientDashboard() {
                           {statusLabel[b.status]}
                         </span>
                       </div>
-                      <div className="text-sm font-semibold text-zinc-600">📅 {b.eventDate}</div>
-                      <div className="text-sm font-semibold text-zinc-600">📍 {b.location}</div>
+                      <div className="text-xs font-semibold text-zinc-600">📅 Date: {b.eventDate}</div>
+                      <div className="text-xs font-semibold text-zinc-600 mt-0.5">📍 Details: {b.location}</div>
                       {b.notes && (
-                        <div className="mt-1 text-sm text-zinc-500">📝 {b.notes}</div>
+                        <div className="mt-2 text-xs text-zinc-500 bg-zinc-50 p-2.5 rounded-lg border border-zinc-100">
+                          💬 {b.notes}
+                        </div>
                       )}
                     </div>
                     <div className="text-xs font-mono text-zinc-400">
-                      #{b.id.slice(-8)}
+                      ID: #{b.id.slice(-8)}
                     </div>
                   </div>
                 </div>

@@ -6,7 +6,7 @@ export type UserRole = "client" | "provider";
 
 export type UserSession = {
   id: string;
-  phone: string;
+  email: string;
   role: UserRole;
   profileImage?: string;
   createdAt?: string;

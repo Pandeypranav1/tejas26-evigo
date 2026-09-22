@@ -37,7 +37,7 @@ function AvatarDropdown({ user, role, onSignOut }: { user: any, role: string | n
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const initial = user?.phone ? user.phone.charAt(0) : "U";
+  const initial = user?.email ? user.email.charAt(0).toUpperCase() : "U";
 
   return (
     <div className="relative flex items-center" ref={dropRef}>
@@ -61,7 +61,7 @@ function AvatarDropdown({ user, role, onSignOut }: { user: any, role: string | n
       >
         <div className="px-3 py-2 border-b border-white/10 mb-2">
           <div className="text-xs font-semibold text-white/50 uppercase tracking-wider">{role === "provider" ? "Partner" : "Client"}</div>
-          <div className="text-sm font-bold text-white truncate mt-0.5">{user.phone}</div>
+          <div className="text-sm font-bold text-white truncate mt-0.5">{user.email}</div>
         </div>
         
         <Link href="#" className="flex w-full items-center px-3 py-2.5 text-sm font-medium text-white/80 rounded-xl hover:bg-white/10 hover:text-white transition-colors" onClick={() => setOpen(false)}>
@@ -198,12 +198,12 @@ export function Header() {
                 <img src={user.profileImage} alt="Profile" className="h-12 w-12 rounded-full object-cover shadow-inner ring-2 ring-white/10" />
               ) : (
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 text-lg font-bold text-white shadow-inner ring-2 ring-white/10">
-                  {user.phone ? user.phone.charAt(0) : "U"}
+                  {user.email ? user.email.charAt(0).toUpperCase() : "U"}
                 </div>
               )}
               <div>
                 <div className="text-[10px] font-black text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-cyan-400 uppercase tracking-widest">{role === "provider" ? "Partner" : "Client"}</div>
-                <div className="text-sm font-bold text-white truncate mt-0.5">{user.phone}</div>
+                <div className="text-sm font-bold text-white truncate mt-0.5">{user.email}</div>
               </div>
             </div>
           )}

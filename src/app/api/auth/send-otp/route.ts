@@ -1,46 +1,70 @@
 import { NextResponse } from "next/server";
-import { sendOTP } from "@/lib/otpStore";
+import { createClient } from "@supabase/supabase-js";
 
+// Rate limit: 1 OTP per email per 30 seconds (in-memory, resets on server restart)
 const rateLimit = new Map<string, number>();
 
-function getTenDigits(raw: string) {
-  const v = raw.replace(/\D/g, "");
-  if (v.length === 12 && v.startsWith("91")) return v.slice(2);
-  if (v.length === 11 && v.startsWith("0")) return v.slice(1);
-  return v;
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 export async function POST(request: Request) {
   try {
-    const { phone } = await request.json();
+    const { email } = await request.json();
 
-    if (!phone) {
-      return NextResponse.json({ error: "Phone number is required" }, { status: 400 });
+    if (!email || typeof email !== "string" || !email.trim()) {
+      return NextResponse.json(
+        { error: "Email is required" },
+        { status: 400 }
+      );
     }
 
-    const tenDigits = getTenDigits(phone);
-    if (!/^[6-9]\d{9}$/.test(tenDigits)) {
-      return NextResponse.json({ error: "Enter a valid Indian mobile number" }, { status: 400 });
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!isValidEmail(normalizedEmail)) {
+      return NextResponse.json(
+        { error: "Enter a valid email address" },
+        { status: 400 }
+      );
     }
 
-    const normalizedPhone = `+91${tenDigits}`;
-
-    console.log(`[DEMO MODE] Allowing number: ${tenDigits}`);
-
-    // Rate Limit (1 per 30s per number)
-    const lastSent = rateLimit.get(normalizedPhone);
+    // Rate limit (1 per 30s per email)
+    const lastSent = rateLimit.get(normalizedEmail);
     if (lastSent && Date.now() - lastSent < 30000) {
-      return NextResponse.json({ error: "Please wait 30 seconds before requesting another OTP." }, { status: 429 });
+      return NextResponse.json(
+        { error: "Please wait 30 seconds before requesting another OTP." },
+        { status: 429 }
+      );
     }
-    rateLimit.set(normalizedPhone, Date.now());
+    rateLimit.set(normalizedEmail, Date.now());
 
-    // Generate static OTP for demo mode
-    const otp = "123456";
+    // Use a server-side Supabase client with the anon key.
+    // signInWithOtp is a public Auth endpoint that works with the anon key.
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
 
-    await sendOTP(normalizedPhone, otp);
+    const { error } = await supabase.auth.signInWithOtp({ email: normalizedEmail });
 
-    return NextResponse.json({ success: true, message: "OTP sent successfully" });
-  } catch (error: any) {
-    return NextResponse.json({ error: "Failed to send OTP" }, { status: 500 });
+    if (error) {
+      console.error("[send-otp] Supabase error:", error);
+      return NextResponse.json(
+        { error: error.message || "Failed to send OTP" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: "OTP sent to your email. Please check your inbox.",
+    });
+  } catch (err: any) {
+    console.error("[send-otp] Unexpected error:", err);
+    return NextResponse.json(
+      { error: "Failed to send OTP" },
+      { status: 500 }
+    );
   }
 }

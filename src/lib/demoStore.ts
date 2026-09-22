@@ -38,6 +38,14 @@ export type DemoBooking = {
   providerOwnerUid: string;
   clientUid: string;
   clientPhone: string;
+  customerName?: string;
+  customerEmail?: string;
+  serviceType?: string;
+  transportService?: string;
+  pickupLocation?: string;
+  dropLocation?: string;
+  pickupTime?: string;
+  passengerCount?: number;
   eventDate: string;
   location: string;
   notes: string;

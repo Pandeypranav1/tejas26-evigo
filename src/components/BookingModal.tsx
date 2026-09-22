@@ -47,7 +47,7 @@ export function BookingModal({
         providerId: provider.id,
         providerOwnerUid: provider.ownerUid,
         clientUid: u?.uid ?? user.id,
-        clientPhone: u?.phone ?? user.phone,
+        clientPhone: user.email,
         eventDate,
         location,
         notes,

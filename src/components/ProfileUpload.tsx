@@ -37,7 +37,7 @@ export function ProfileUpload() {
     window.location.reload();
   };
 
-  const initial = user?.phone ? user.phone.charAt(0).toUpperCase() : "U";
+  const initial = user?.email ? user.email.charAt(0).toUpperCase() : "U";
 
   return (
     <div className="flex flex-col items-center">

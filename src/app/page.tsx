@@ -221,7 +221,7 @@ export default function Home() {
 
     <ScrollReveal animation="fade-up" delay={200} className="mt-6">
       <div className="flex gap-4">
-        <Link href="/services/transport/faabcab" className="w-full sm:w-auto block">
+        <Link href="/travel-tourism/faabcab" className="w-full sm:w-auto block">
           <Button className="w-full whitespace-nowrap bg-indigo-600 text-white hover:bg-indigo-700">
             Book Transport →
           </Button>

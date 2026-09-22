@@ -662,6 +662,33 @@ export default function TourismPage() {
             </div>
           )}
 
+          {/* FaabCab Transport Partner Callout */}
+          <div className="mt-12 p-8 rounded-3xl bg-gradient-to-r from-amber-950/30 via-[#0d091a] to-cyan-950/30 border border-amber-500/30 backdrop-blur-md flex flex-col md:flex-row items-center justify-between gap-6 shadow-[0_8px_30px_rgba(0,0,0,0.4)]">
+            <div className="max-w-xl">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold text-amber-300 bg-amber-500/20 border border-amber-500/30">
+                  🚗 Transport Partner
+                </span>
+                <span className="text-xs text-white/50 font-semibold">📍 Jamui, Bihar</span>
+              </div>
+              <h3 className="text-3xl font-black text-white mb-2">
+                FaabCab
+              </h3>
+              <p className="text-sm text-white/70 leading-relaxed">
+                Need inter-city travel, airport transfers, station pickup, or hourly cab rentals for your Bihar tour? Book directly with Evigo’s official transport partner.
+              </p>
+            </div>
+            <div className="shrink-0">
+              <Link
+                href="/travel-tourism/faabcab"
+                className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 via-cyan-500 to-violet-600 text-white font-bold text-sm hover:scale-105 shadow-[0_0_25px_rgba(245,158,11,0.3)] transition-all flex items-center gap-2"
+              >
+                <span>Explore FaabCab</span>
+                <span>&rarr;</span>
+              </Link>
+            </div>
+          </div>
+
           {/* Travel Assistance Callout */}
           <div className="mt-16 p-8 rounded-3xl bg-gradient-to-br from-violet-950/40 via-[#0f0a1e] to-cyan-950/30 border border-white/10 flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="max-w-xl">

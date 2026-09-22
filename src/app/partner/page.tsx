@@ -45,11 +45,9 @@ export default function PartnerPage() {
     }
   }, [loading, role, router, user]);
 
-  // Pre-fill phone from logged-in user
+  // Partner page registration form
   useEffect(() => {
-    if (user?.phone && !phone) {
-      setPhone(user.phone);
-    }
+    // No auto-fill needed
   }, [user]);
 
   const submit = () => {

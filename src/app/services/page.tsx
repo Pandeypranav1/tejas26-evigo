@@ -84,32 +84,32 @@ export default function ServicesPage() {
               </div>
             </Link>
 
-            {/* Other Services Card (Coming Soon) */}
-            <div className="group block relative cursor-default">
-              <div className="relative rounded-3xl border border-white/10 overflow-hidden bg-white/[0.03] backdrop-blur-sm transition-all duration-300 hover:border-amber-500/50 hover:shadow-[0_0_30px_rgba(245,158,11,0.15)] opacity-85 hover:opacity-100">
+            {/* FaabCab Transport Partner Card */}
+            <Link href="/travel-tourism/faabcab" className="group block">
+              <div className="relative rounded-3xl border border-white/10 overflow-hidden bg-white/5 backdrop-blur-sm transition-all duration-300 hover:border-amber-500 hover:shadow-[0_0_30px_rgba(245,158,11,0.2)] hover:-translate-y-1">
                 <div className="relative aspect-[4/3] w-full overflow-hidden">
                   <Image 
-                    src="/tourism/jamui/jamui_hero.png"
-                    alt="Other Services"
+                    src="/partners/transport_faabcab.png"
+                    alt="FaabCab Transport Partner"
                     fill
-                    className="object-cover grayscale-[25%] transition-transform duration-700 group-hover:scale-105"
+                    className="object-cover transition-transform duration-700 group-hover:scale-105"
                     sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#05030f] via-[#05030f]/70 to-[#05030f]/30" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#05030f] via-[#05030f]/60 to-transparent" />
                   <div className="absolute bottom-6 left-6 right-6">
                     <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 mb-3 text-[11px] font-bold text-amber-300 bg-amber-500/20 border border-amber-500/30">
-                      ⏳ Coming Soon
+                      🚗 Transport Partner
                     </div>
-                    <h3 className="text-2xl font-bold text-white mb-1 text-white/90 group-hover:text-amber-300 transition-colors">
-                      Other Services
+                    <h3 className="text-2xl font-bold text-white mb-1 group-hover:text-amber-400 transition-colors">
+                      FaabCab
                     </h3>
-                    <p className="text-sm text-white/60">
-                      Local tourist guides, homestays, and cab services — launching soon.
+                    <p className="text-sm text-white/70">
+                      Inter-city cabs, hourly rentals, airport & railway station transfers in Jamui.
                     </p>
                   </div>
                 </div>
               </div>
-            </div>
+            </Link>
           </div>
         </PageContainer>
       </main>

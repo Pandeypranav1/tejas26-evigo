@@ -5,16 +5,8 @@ import { useParams, useRouter } from "next/navigation";
 import { Container } from "@/components/Container";
 import { useAuth, UserRole } from "@/context/AuthContext";
 
-function getTenDigits(raw: string) {
-  const v = raw.replace(/\D/g, "");
-  if (v.length === 12 && v.startsWith("91")) return v.slice(2);
-  if (v.length === 11 && v.startsWith("0")) return v.slice(1);
-  return v;
-}
-
-function isValidPhone(v: string) {
-  const tenDigits = getTenDigits(v);
-  return /^[6-9]\d{9}$/.test(tenDigits);
+function isValidEmail(v: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 }
 
 export default function LoginPage() {
@@ -27,9 +19,9 @@ export default function LoginPage() {
     [params.role]
   );
 
-  const [step, setStep] = useState<"phone" | "otp">("phone");
-  const [phone, setPhone] = useState("");
-  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const [step, setStep] = useState<"email" | "otp">("email");
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState(["", "", "", "", "", "", "", ""]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -49,8 +41,8 @@ export default function LoginPage() {
   const handleSendOtp = async () => {
     setError(null);
     setNotice(null);
-    if (!isValidPhone(phone)) {
-      setError("Enter a valid Indian mobile number");
+    if (!isValidEmail(email)) {
+      setError("Enter a valid email address");
       return;
     }
     setSubmitting(true);
@@ -58,14 +50,14 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/send-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({ email: email.trim() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to send OTP");
       
       setStep("otp");
-      setNotice(data.message || "OTP sent successfully.");
-      setResendTimer(30);
+      setNotice(data.message || "OTP sent to your email.");
+      setResendTimer(60);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -77,8 +69,8 @@ export default function LoginPage() {
     setError(null);
     setNotice(null);
     const otpValue = otpOverride || otp.join("");
-    if (otpValue.length < 6) {
-      setError("Please enter the complete 6-digit OTP.");
+    if (otpValue.length < 8) {
+      setError("Please enter the complete 8-digit OTP.");
       return;
     }
     setSubmitting(true);
@@ -86,7 +78,7 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/verify-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, otp: otpValue, role }),
+        body: JSON.stringify({ email: email.trim(), otp: otpValue, role }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Invalid OTP");
@@ -103,18 +95,50 @@ export default function LoginPage() {
   };
 
   const handleOtpChange = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return;
+    const digitsOnly = value.replace(/\D/g, "");
+    
+    if (digitsOnly.length > 1) {
+      const pasted = digitsOnly.slice(0, 8);
+      const newOtp = ["", "", "", "", "", "", "", ""];
+      for (let i = 0; i < pasted.length; i++) {
+        newOtp[i] = pasted[i];
+      }
+      setOtp(newOtp);
+      const nextIndex = Math.min(pasted.length, 7);
+      inputRefs.current[nextIndex]?.focus();
+      if (pasted.length === 8) {
+        handleVerifyOtp(pasted);
+      }
+      return;
+    }
+
     const newOtp = [...otp];
-    newOtp[index] = value.substring(value.length - 1);
+    newOtp[index] = digitsOnly;
     setOtp(newOtp);
 
-    if (value && index < 5) {
+    if (digitsOnly && index < 7) {
       inputRefs.current[index + 1]?.focus();
     }
 
     const currentOtpStr = newOtp.join("");
-    if (currentOtpStr.length === 6) {
+    if (currentOtpStr.length === 8) {
        handleVerifyOtp(currentOtpStr);
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pastedData = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 8);
+    if (!pastedData) return;
+    const newOtp = ["", "", "", "", "", "", "", ""];
+    for (let i = 0; i < pastedData.length; i++) {
+      newOtp[i] = pastedData[i];
+    }
+    setOtp(newOtp);
+    const nextIndex = Math.min(pastedData.length, 7);
+    inputRefs.current[nextIndex]?.focus();
+    if (pastedData.length === 8) {
+      handleVerifyOtp(pastedData);
     }
   };
 
@@ -123,23 +147,25 @@ export default function LoginPage() {
       inputRefs.current[index - 1]?.focus();
     }
     if (e.key === "Enter") {
-      if (!submitting) handleVerifyOtp();
+      if (!submitting && otp.join("").length === 8) handleVerifyOtp();
     }
   };
 
   // OTP box style
   const otpBoxStyle: React.CSSProperties = {
-    width: "48px",
-    height: "56px",
+    width: "38px",
+    height: "52px",
     background: "#1a1a1a",
     border: "1px solid rgba(255,255,255,0.12)",
-    borderRadius: 12,
+    borderRadius: 10,
     color: "#ffffff",
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 700,
     textAlign: "center",
     outline: "none",
   };
+
+  const isOtpComplete = otp.join("").length === 8;
 
   return (
     <main
@@ -228,7 +254,7 @@ export default function LoginPage() {
               WebkitBackdropFilter: "blur(20px)",
               border: "1px solid rgba(255,255,255,0.1)",
               borderRadius: 24,
-              padding: "32px 28px",
+              padding: "32px 24px",
               boxShadow: "0 25px 50px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.08)",
             }}
           >
@@ -256,7 +282,7 @@ export default function LoginPage() {
               </span>
             </div>
 
-            {step === "phone" ? (
+            {step === "email" ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 <div>
                   <label
@@ -270,7 +296,7 @@ export default function LoginPage() {
                       textTransform: "uppercase",
                     }}
                   >
-                    Mobile Number
+                    Email Address
                   </label>
                   <div style={{ position: "relative" }}>
                     <div style={{
@@ -282,16 +308,15 @@ export default function LoginPage() {
                       fontSize: 16,
                       pointerEvents: "none"
                     }}>
-                      📞
+                      ✉️
                     </div>
                     <input
-                      id="login-phone-input"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      id="login-email-input"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && !submitting && handleSendOtp()}
-                      placeholder="Enter 10-digit number"
-                      type="tel"
-                      maxLength={10}
+                      placeholder="name@example.com"
+                      type="email"
                       style={{
                         width: "100%",
                         background: "#1a1a1a",
@@ -410,23 +435,24 @@ export default function LoginPage() {
                       textAlign: "center"
                     }}
                   >
-                    Enter 6-digit OTP
+                    ENTER 8-DIGIT OTP
                   </label>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 6 }}>
+                  <div style={{ display: "flex", justifyContent: "center", gap: 4 }}>
                     {otp.map((digit, index) => (
                       <input
                         key={index}
                         ref={(el) => { inputRefs.current[index] = el; }}
                         id={`otp-input-${index}`}
                         type="text"
-                        maxLength={1}
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        maxLength={8}
                         value={digit}
                         onChange={(e) => handleOtpChange(index, e.target.value)}
+                        onPaste={handlePaste}
                         onKeyDown={(e) => handleOtpKeyDown(index, e)}
                         style={{
                           ...otpBoxStyle,
-                          width: "44px",
-                          color: "#ffffff",
                           transition: "all 0.2s"
                         }}
                         onFocus={(e) => {
@@ -462,24 +488,24 @@ export default function LoginPage() {
                 <button
                   id="login-verify-otp-btn"
                   onClick={() => handleVerifyOtp()}
-                  disabled={submitting}
+                  disabled={submitting || !isOtpComplete}
                   style={{
                     width: "100%",
                     padding: "13px 20px",
                     borderRadius: 12,
                     border: "none",
-                    background: submitting
-                      ? "rgba(6,182,212,0.4)"
+                    background: submitting || !isOtpComplete
+                      ? "rgba(6,182,212,0.3)"
                       : "linear-gradient(135deg, #06b6d4 0%, #8b5cf6 100%)",
-                    color: "#ffffff",
+                    color: submitting || !isOtpComplete ? "rgba(255,255,255,0.5)" : "#ffffff",
                     fontSize: 15,
                     fontWeight: 700,
-                    cursor: submitting ? "not-allowed" : "pointer",
+                    cursor: submitting || !isOtpComplete ? "not-allowed" : "pointer",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     gap: 8,
-                    boxShadow: submitting ? "none" : "0 4px 20px rgba(6,182,212,0.35)",
+                    boxShadow: submitting || !isOtpComplete ? "none" : "0 4px 20px rgba(6,182,212,0.35)",
                     transition: "all 0.2s"
                   }}
                 >
@@ -526,8 +552,8 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      setStep("phone");
-                      setOtp(["", "", "", "", "", ""]);
+                      setStep("email");
+                      setOtp(["", "", "", "", "", "", "", ""]);
                       setNotice(null);
                       setError(null);
                       setResendTimer(0);
@@ -542,7 +568,7 @@ export default function LoginPage() {
                       padding: 0
                     }}
                   >
-                    Change Number
+                    Change Email
                   </button>
                 </div>
               </div>

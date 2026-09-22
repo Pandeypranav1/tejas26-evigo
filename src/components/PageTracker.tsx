@@ -73,13 +73,13 @@ export function PageTracker() {
         page_title,
         referrer,
         device_type,
-        user_phone: user?.phone ?? null,
+        user_phone: user?.email ?? null,
       }),
     }).catch((err) =>
       // Silently swallow errors — analytics should never break the app
       console.warn("[PageTracker] Could not record visit:", err)
     );
-  }, [pathname, user?.phone]);
+  }, [pathname, user?.email]);
 
   // This component renders nothing
   return null;
