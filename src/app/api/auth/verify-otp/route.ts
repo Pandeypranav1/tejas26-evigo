@@ -12,9 +12,9 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!otp || typeof otp !== "string" || !/^\d{8}$/.test(otp)) {
+    if (!otp || typeof otp !== "string" || !/^\d{6}$/.test(otp)) {
       return NextResponse.json(
-        { error: "A valid 8-digit OTP is required" },
+        { error: "A valid 6-digit OTP is required" },
         { status: 400 }
       );
     }

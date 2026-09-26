@@ -21,7 +21,7 @@ export default function LoginPage() {
 
   const [step, setStep] = useState<"email" | "otp">("email");
   const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState(["", "", "", "", "", "", "", ""]);
+  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -69,8 +69,8 @@ export default function LoginPage() {
     setError(null);
     setNotice(null);
     const otpValue = otpOverride || otp.join("");
-    if (otpValue.length < 8) {
-      setError("Please enter the complete 8-digit OTP.");
+    if (otpValue.length < 6) {
+      setError("Please enter the complete 6-digit OTP.");
       return;
     }
     setSubmitting(true);
@@ -98,15 +98,15 @@ export default function LoginPage() {
     const digitsOnly = value.replace(/\D/g, "");
     
     if (digitsOnly.length > 1) {
-      const pasted = digitsOnly.slice(0, 8);
-      const newOtp = ["", "", "", "", "", "", "", ""];
+      const pasted = digitsOnly.slice(0, 6);
+      const newOtp = ["", "", "", "", "", ""];
       for (let i = 0; i < pasted.length; i++) {
         newOtp[i] = pasted[i];
       }
       setOtp(newOtp);
-      const nextIndex = Math.min(pasted.length, 7);
+      const nextIndex = Math.min(pasted.length, 5);
       inputRefs.current[nextIndex]?.focus();
-      if (pasted.length === 8) {
+      if (pasted.length === 6) {
         handleVerifyOtp(pasted);
       }
       return;
@@ -116,28 +116,28 @@ export default function LoginPage() {
     newOtp[index] = digitsOnly;
     setOtp(newOtp);
 
-    if (digitsOnly && index < 7) {
+    if (digitsOnly && index < 5) {
       inputRefs.current[index + 1]?.focus();
     }
 
     const currentOtpStr = newOtp.join("");
-    if (currentOtpStr.length === 8) {
+    if (currentOtpStr.length === 6) {
        handleVerifyOtp(currentOtpStr);
     }
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
     e.preventDefault();
-    const pastedData = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 8);
+    const pastedData = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
     if (!pastedData) return;
-    const newOtp = ["", "", "", "", "", "", "", ""];
+    const newOtp = ["", "", "", "", "", ""];
     for (let i = 0; i < pastedData.length; i++) {
       newOtp[i] = pastedData[i];
     }
     setOtp(newOtp);
-    const nextIndex = Math.min(pastedData.length, 7);
+    const nextIndex = Math.min(pastedData.length, 5);
     inputRefs.current[nextIndex]?.focus();
-    if (pastedData.length === 8) {
+    if (pastedData.length === 6) {
       handleVerifyOtp(pastedData);
     }
   };
@@ -147,13 +147,13 @@ export default function LoginPage() {
       inputRefs.current[index - 1]?.focus();
     }
     if (e.key === "Enter") {
-      if (!submitting && otp.join("").length === 8) handleVerifyOtp();
+      if (!submitting && otp.join("").length === 6) handleVerifyOtp();
     }
   };
 
   // OTP box style
   const otpBoxStyle: React.CSSProperties = {
-    width: "38px",
+    width: "44px",
     height: "52px",
     background: "#1a1a1a",
     border: "1px solid rgba(255,255,255,0.12)",
@@ -165,7 +165,7 @@ export default function LoginPage() {
     outline: "none",
   };
 
-  const isOtpComplete = otp.join("").length === 8;
+  const isOtpComplete = otp.join("").length === 6;
 
   return (
     <main
@@ -435,9 +435,9 @@ export default function LoginPage() {
                       textAlign: "center"
                     }}
                   >
-                    ENTER 8-DIGIT OTP
+                    ENTER 6-DIGIT OTP
                   </label>
-                  <div style={{ display: "flex", justifyContent: "center", gap: 4 }}>
+                  <div style={{ display: "flex", justifyContent: "center", gap: 8 }}>
                     {otp.map((digit, index) => (
                       <input
                         key={index}
@@ -446,7 +446,7 @@ export default function LoginPage() {
                         type="text"
                         inputMode="numeric"
                         autoComplete="one-time-code"
-                        maxLength={8}
+                        maxLength={6}
                         value={digit}
                         onChange={(e) => handleOtpChange(index, e.target.value)}
                         onPaste={handlePaste}
