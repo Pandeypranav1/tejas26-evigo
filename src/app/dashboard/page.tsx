@@ -111,11 +111,11 @@ export default function ClientDashboard() {
         <div className="bg-white rounded-3xl border border-zinc-200 shadow-sm p-6 sm:p-8 flex flex-col sm:flex-row items-center sm:items-start gap-6 sm:gap-8 relative overflow-hidden">
           <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 rounded-full bg-cyan-500/10 blur-3xl pointer-events-none"></div>
           <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-64 h-64 rounded-full bg-violet-500/10 blur-3xl pointer-events-none"></div>
-          
+
           <div className="shrink-0 z-10">
             <ProfileUpload />
           </div>
-          
+
           <div className="flex-1 text-center sm:text-left z-10 w-full flex flex-col justify-center">
             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
               <div>
@@ -129,7 +129,7 @@ export default function ClientDashboard() {
                   Track your transport bookings, venue requests, and explore top-rated services for your trip or event.
                 </p>
               </div>
-              
+
               <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto mt-2 lg:mt-0">
                 <Link href="/travel-tourism/faabcab" className="w-full sm:w-auto">
                   <Button className="w-full shadow-lg shadow-cyan-500/20 bg-gradient-to-r from-cyan-500 to-violet-600 border-0 text-white font-bold text-xs py-2.5 px-4">

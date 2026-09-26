@@ -4,27 +4,28 @@ export const SERVICE_CATEGORIES = [
   "DJ",
   "Mehendi & Makeup",
   "Restaurant",
-  "Transport",
 ] as const;
 
-export type ServiceCategory = (typeof SERVICE_CATEGORIES)[number];
+// Transport remains a supported service type for existing transport logic,
+// but it is intentionally excluded from the generic homepage/service-category cards.
+export type ServiceCategory = (typeof SERVICE_CATEGORIES)[number] | "Transport";
 
 export const CATEGORY_TAGLINE: Record<ServiceCategory, string> = {
-  Catering:          "Buffet, snacks, and full-service menus",
-  Photography:       "Wedding shoots, candid moments, and reels",
-  DJ:                "Party-ready sound, lights, and vibes",
-  "Mehendi & Makeup":"Bridal mehendi and makeover artists",
-  Restaurant:        "Verified hotels, banquets, and fine dining",
-  Transport:         "Cabs, car rentals, and local travel",
+  Catering: "Buffet, snacks, and full-service menus",
+  Photography: "Wedding shoots, candid moments, and reels",
+  DJ: "Party-ready sound, lights, and vibes",
+  "Mehendi & Makeup": "Bridal mehendi and makeover artists",
+  Restaurant: "Verified hotels, banquets, and fine dining",
+  Transport: "Cabs, car rentals, and local travel",
 };
 
 export const CATEGORY_IMAGE: Record<ServiceCategory, string> = {
-  Catering:          "/catering_service_1777314249262.png",
-  Photography:       "/photography_service_1777314265964.png",
-  DJ:                "/dj_service_1777314281684.png",
-  "Mehendi & Makeup":"/mehendi_service_1777314296728.png",
-  Restaurant:        "/partners/events/genx_brij/genx_brij_1.png",
-  Transport:         "/partners/transport_faabcab.png",
+  Catering: "/catering_service_1777314249262.png",
+  Photography: "/photography_service_1777314265964.png",
+  DJ: "/dj_service_1777314281684.png",
+  "Mehendi & Makeup": "/mehendi_service_1777314296728.png",
+  Restaurant: "/partners/events/genx_brij/genx_brij_1.png",
+  Transport: "/partners/transport_faabcab.png",
 };
 
 export const EMPOWERMENT_IMAGES: { src: string; label: string; sub: string; accent: string }[] = [
@@ -229,26 +230,26 @@ export const HOTEL_PARTNERS: HotelPartner[] = [
 // ── Bihar City Centroids (for city-dropdown & manual search fallback) ──
 // Used as the origin lat/lng when searching. No external geocoding API needed.
 export const BIHAR_CITIES: { name: string; lat: number; lng: number; aliases?: string[] }[] = [
-  { name: "Jamui",          lat: 24.9278, lng: 86.2265, aliases: ["jamui", "jamui bihar", "jamui town", "jamui station", "malaypur"] },
-  { name: "Patna",          lat: 25.5941, lng: 85.1376, aliases: ["patna", "patna city", "pataliputra", "danapur"] },
-  { name: "Gaya",           lat: 24.7955, lng: 85.0002, aliases: ["gaya", "gaya ji", "bodh gaya", "bodhgaya"] },
-  { name: "Muzaffarpur",    lat: 26.1197, lng: 85.3910, aliases: ["muzaffarpur", "muz"] },
-  { name: "Bhagalpur",      lat: 25.2425, lng: 86.9842, aliases: ["bhagalpur", "silk city"] },
-  { name: "Rajgir",         lat: 25.0303, lng: 85.4182, aliases: ["rajgir", "rajgriha"] },
-  { name: "Nalanda",        lat: 25.1359, lng: 85.4442, aliases: ["nalanda", "bihar sharif"] },
-  { name: "Vaishali",       lat: 25.6870, lng: 85.1290, aliases: ["vaishali", "hajipur"] },
-  { name: "Bodh Gaya",      lat: 24.6961, lng: 84.9911, aliases: ["bodhgaya", "bodh gaya"] },
-  { name: "Munger",         lat: 25.3743, lng: 86.4730, aliases: ["munger", "monghyr", "jamalpur"] },
-  { name: "Begusarai",      lat: 25.4182, lng: 86.1272, aliases: ["begusarai", "barauni"] },
-  { name: "Darbhanga",      lat: 26.1542, lng: 85.8918, aliases: ["darbhanga", "mithila"] },
-  { name: "Sitamarhi",      lat: 26.5936, lng: 85.4899, aliases: ["sitamarhi"] },
-  { name: "Motihari",       lat: 26.6503, lng: 84.9183, aliases: ["motihari", "east champaran"] },
-  { name: "Samastipur",     lat: 25.8614, lng: 85.7795, aliases: ["samastipur"] },
-  { name: "Purnia",         lat: 25.7771, lng: 87.4753, aliases: ["purnia", "purnea"] },
-  { name: "Katihar",        lat: 25.5541, lng: 87.5683, aliases: ["katihar"] },
-  { name: "Saharsa",        lat: 25.8835, lng: 86.6006, aliases: ["saharsa"] },
-  { name: "Deoghar",        lat: 24.4826, lng: 86.6974, aliases: ["deoghar", "baba dham"] },
-  { name: "Simultala",      lat: 24.7115, lng: 86.5415, aliases: ["simultala", "simultala hill station"] },
+  { name: "Jamui", lat: 24.9278, lng: 86.2265, aliases: ["jamui", "jamui bihar", "jamui town", "jamui station", "malaypur"] },
+  { name: "Patna", lat: 25.5941, lng: 85.1376, aliases: ["patna", "patna city", "pataliputra", "danapur"] },
+  { name: "Gaya", lat: 24.7955, lng: 85.0002, aliases: ["gaya", "gaya ji", "bodh gaya", "bodhgaya"] },
+  { name: "Muzaffarpur", lat: 26.1197, lng: 85.3910, aliases: ["muzaffarpur", "muz"] },
+  { name: "Bhagalpur", lat: 25.2425, lng: 86.9842, aliases: ["bhagalpur", "silk city"] },
+  { name: "Rajgir", lat: 25.0303, lng: 85.4182, aliases: ["rajgir", "rajgriha"] },
+  { name: "Nalanda", lat: 25.1359, lng: 85.4442, aliases: ["nalanda", "bihar sharif"] },
+  { name: "Vaishali", lat: 25.6870, lng: 85.1290, aliases: ["vaishali", "hajipur"] },
+  { name: "Bodh Gaya", lat: 24.6961, lng: 84.9911, aliases: ["bodhgaya", "bodh gaya"] },
+  { name: "Munger", lat: 25.3743, lng: 86.4730, aliases: ["munger", "monghyr", "jamalpur"] },
+  { name: "Begusarai", lat: 25.4182, lng: 86.1272, aliases: ["begusarai", "barauni"] },
+  { name: "Darbhanga", lat: 26.1542, lng: 85.8918, aliases: ["darbhanga", "mithila"] },
+  { name: "Sitamarhi", lat: 26.5936, lng: 85.4899, aliases: ["sitamarhi"] },
+  { name: "Motihari", lat: 26.6503, lng: 84.9183, aliases: ["motihari", "east champaran"] },
+  { name: "Samastipur", lat: 25.8614, lng: 85.7795, aliases: ["samastipur"] },
+  { name: "Purnia", lat: 25.7771, lng: 87.4753, aliases: ["purnia", "purnea"] },
+  { name: "Katihar", lat: 25.5541, lng: 87.5683, aliases: ["katihar"] },
+  { name: "Saharsa", lat: 25.8835, lng: 86.6006, aliases: ["saharsa"] },
+  { name: "Deoghar", lat: 24.4826, lng: 86.6974, aliases: ["deoghar", "baba dham"] },
+  { name: "Simultala", lat: 24.7115, lng: 86.5415, aliases: ["simultala", "simultala hill station"] },
 ];
 
 /**
@@ -295,8 +296,8 @@ export function haversineKm(
   const a =
     Math.sin(dLat / 2) ** 2 +
     Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLng / 2) ** 2;
+    Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
@@ -446,30 +447,28 @@ export interface DemoProvider {
 
 export function getDemoProviders(): DemoProvider[] {
   if (typeof window === "undefined") return [];
+
   try {
     const raw = localStorage.getItem(PROVIDERS_KEY);
-    const providers = raw ? (JSON.parse(raw) as DemoProvider[]) : [];
-    // Ensure FaabCab transport provider is present
-    const hasFaabCab = providers.some(p => p.businessName === "FaabCab");
-    if (!hasFaabCab) {
-      providers.push({
-        id: "faab-cab",
-        ownerUid: "faab-cab-owner",
-        ownerName: "FaabCab",
-        businessName: "FaabCab",
-        category: "Transport",
-        phone: "",
-        city: "Jamui",
-        startingPrice: 0,
-        experienceYears: 0,
-        description: "Transport services across Jamui and nearby routes.",
-        imageUrl: "/partners/transport_faabcab.png",
-        createdAt: Date.now(),
-        isActive: true,
-      });
-      localStorage.setItem(PROVIDERS_KEY, JSON.stringify(providers));
+    const providers = raw
+      ? (JSON.parse(raw) as Array<DemoProvider & { category?: string }>)
+      : [];
+
+    // FaabCab is now managed through Supabase as the real transport partner.
+    // Remove any legacy local demo Transport/FaabCab entries so they cannot
+    // reappear in older browser localStorage data.
+    const filteredProviders = providers.filter(
+      (provider) => provider.category !== "Transport"
+    ) as DemoProvider[];
+
+    if (filteredProviders.length !== providers.length) {
+      localStorage.setItem(
+        PROVIDERS_KEY,
+        JSON.stringify(filteredProviders)
+      );
     }
-    return providers;
+
+    return filteredProviders;
   } catch {
     return [];
   }
@@ -595,4 +594,3 @@ export const TOURISM_PLACES: TourismPlace[] = [
     featured: true,
   },
 ];
-

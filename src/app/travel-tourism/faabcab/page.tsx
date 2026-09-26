@@ -118,8 +118,9 @@ export default function FaabCabPartnerPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          client_id: user?.id || null,
           provider_id: "faab-cab",
-          provider_uuid: "faab-cab",
+          provider_uuid: "6105241d-1d38-4274-b912-eea67f4c32b0",
           service_id: serviceId,
           provider_name: "FaabCab",
           service_type: "Transport",
