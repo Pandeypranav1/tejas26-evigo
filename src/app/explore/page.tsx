@@ -7,15 +7,15 @@ import { Container } from "@/components/Container";
 import { SERVICE_CATEGORIES, CATEGORY_IMAGE, EVENT_VENUES } from "@/lib/constants";
 import type { ServiceCategory, EventVenue } from "@/lib/constants";
 import type { DemoProvider } from "@/lib/demoStore";
-import { getDemoProviders, getDemoUser, saveDemoBooking } from "@/lib/demoStore";
+import { getDemoUser, saveDemoBooking } from "@/lib/demoStore";
 
 /* ─── Price bands ─── */
 const PRICE_BANDS = [
-  { label: "Any Price",      min: 0,     max: Infinity },
-  { label: "Under ₹5,000",  min: 0,     max: 5000 },
-  { label: "₹5k – ₹15k",   min: 5000,  max: 15000 },
-  { label: "₹15k – ₹50k",  min: 15000, max: 50000 },
-  { label: "₹50k+",         min: 50000, max: Infinity },
+  { label: "Any Price", min: 0, max: Infinity },
+  { label: "Under ₹5,000", min: 0, max: 5000 },
+  { label: "₹5k – ₹15k", min: 5000, max: 15000 },
+  { label: "₹15k – ₹50k", min: 15000, max: 50000 },
+  { label: "₹50k+", min: 50000, max: Infinity },
 ];
 
 /* ─── Hotel-venue price parser (lowest price from range) ─── */
@@ -84,20 +84,20 @@ function BookingModal({
             <div className="flex flex-col gap-3.5">
               <label className="flex flex-col gap-1.5">
                 <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Event Date</span>
-                <input type="date" value={eventDate} onChange={e=>setEventDate(e.target.value)} className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-200 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100" />
+                <input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-200 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100" />
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Venue / Location</span>
-                <input value={location} onChange={e=>setLocation(e.target.value)} placeholder="e.g. Wedding Hall, Patna" className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-200 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100" />
+                <input value={location} onChange={e => setLocation(e.target.value)} placeholder="e.g. Wedding Hall, Patna" className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-200 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100" />
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-xs font-bold text-zinc-500 uppercase tracking-wide">Notes (optional)</span>
-                <textarea value={notes} onChange={e=>setNotes(e.target.value)} rows={3} placeholder="Any special requirements..." className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-200 text-sm outline-none resize-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100" />
+                <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} placeholder="Any special requirements..." className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-200 text-sm outline-none resize-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100" />
               </label>
             </div>
             <div className="flex gap-3 mt-5">
               <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-zinc-200 bg-white text-sm font-bold text-zinc-600 cursor-pointer">Cancel</button>
-              <button onClick={confirm} disabled={!eventDate||!location} className="flex-1 py-2.5 rounded-xl border-none text-sm font-bold text-white cursor-pointer" style={{ background: "linear-gradient(135deg,#8b5cf6,#06b6d4)", opacity:(!eventDate||!location)?0.45:1 }}>
+              <button onClick={confirm} disabled={!eventDate || !location} className="flex-1 py-2.5 rounded-xl border-none text-sm font-bold text-white cursor-pointer" style={{ background: "linear-gradient(135deg,#8b5cf6,#06b6d4)", opacity: (!eventDate || !location) ? 0.45 : 1 }}>
                 Confirm Booking
               </button>
             </div>
@@ -130,7 +130,7 @@ function ProviderCard({ provider, onBook }: { provider: DemoProvider; onBook: (p
         <div className="text-xs font-semibold text-zinc-500 mt-0.5">{provider.ownerName}</div>
         <div className="flex items-center gap-3 mt-2.5 text-xs font-bold text-zinc-500">
           <span>📍 {provider.city}</span>
-          {provider.experienceYears>0 && <span>⭐ {provider.experienceYears} yrs</span>}
+          {provider.experienceYears > 0 && <span>⭐ {provider.experienceYears} yrs</span>}
         </div>
         <div className="mt-2 text-[15px] font-black grad-text">
           ₹{provider.startingPrice.toLocaleString("en-IN")}+
@@ -287,10 +287,35 @@ export default function ExplorePage() {
   const [selectedProvider, setSelectedProvider] = useState<DemoProvider | null>(null);
 
   useEffect(() => {
-    const load = () => setProviders(getDemoProviders().filter(p => p.isActive));
-    load();
-    window.addEventListener("storage", load);
-    return () => window.removeEventListener("storage", load);
+    const load = async () => {
+      try {
+        const response = await fetch("/api/providers");
+        const payload = await response.json();
+        const apiProviders = Array.isArray(payload?.providers) ? payload.providers : [];
+
+        const mapped = apiProviders.map((provider: any) => ({
+          id: provider.id,
+          ownerUid: provider.user_id ?? provider.owner_name ?? provider.id,
+          ownerName: provider.owner_name ?? "Evigo Partner",
+          businessName: provider.business_name ?? "Evigo Partner",
+          category: provider.category ?? "Catering",
+          phone: provider.phone ?? "",
+          city: provider.city ?? "",
+          startingPrice: Number(provider.starting_price ?? 0),
+          experienceYears: Number(provider.experience_years ?? 0),
+          description: provider.description ?? "",
+          imageUrl: provider.image_url ?? "",
+          createdAt: new Date(provider.created_at ?? Date.now()).getTime(),
+          isActive: true,
+        }));
+
+        setProviders(mapped);
+      } catch {
+        setProviders([]);
+      }
+    };
+
+    void load();
   }, []);
 
   /* ─── Filter DemoProviders ─── */

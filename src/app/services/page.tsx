@@ -34,23 +34,28 @@ export default function ServicesPage() {
             <Link href="/services/events" className="group block">
               <div className="relative rounded-3xl border border-white/10 overflow-hidden bg-white/5 backdrop-blur-sm transition-all duration-300 hover:border-violet-500 hover:shadow-[0_0_30px_rgba(139,92,246,0.2)] hover:-translate-y-1">
                 <div className="relative aspect-[4/3] w-full overflow-hidden">
-                  <Image 
+                  <Image
                     src="/partners/events/genx_brij/hall.png"
                     alt="Events & Venues"
                     fill
                     className="object-cover transition-transform duration-700 group-hover:scale-105"
                     sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
                   />
+
                   <div className="absolute inset-0 bg-gradient-to-t from-[#05030f] via-[#05030f]/60 to-transparent" />
+
                   <div className="absolute bottom-6 left-6 right-6">
                     <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 mb-3 text-[11px] font-bold text-violet-300 bg-violet-500/20 border border-violet-500/30">
                       🥂 Premium Venues
                     </div>
+
                     <h3 className="text-2xl font-bold text-white mb-1 group-hover:text-violet-400 transition-colors">
                       Events
                     </h3>
+
                     <p className="text-sm text-white/70">
-                      Explore top-rated hotel partners, banquet halls, and event spaces across Bihar.
+                      Explore top-rated hotel partners, banquet halls, and
+                      event spaces across Bihar.
                     </p>
                   </div>
                 </div>
@@ -61,50 +66,28 @@ export default function ServicesPage() {
             <Link href="/services/tourism" className="group block">
               <div className="relative rounded-3xl border border-white/10 overflow-hidden bg-white/5 backdrop-blur-sm transition-all duration-300 hover:border-cyan-500 hover:shadow-[0_0_30px_rgba(6,182,212,0.2)] hover:-translate-y-1">
                 <div className="relative aspect-[4/3] w-full overflow-hidden">
-                  <Image 
+                  <Image
                     src="/jamui_nature.png"
                     alt="Tourism in Bihar"
                     fill
                     className="object-cover transition-transform duration-700 group-hover:scale-105"
                     sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
                   />
+
                   <div className="absolute inset-0 bg-gradient-to-t from-[#05030f] via-[#05030f]/60 to-transparent" />
+
                   <div className="absolute bottom-6 left-6 right-6">
                     <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 mb-3 text-[11px] font-bold text-cyan-300 bg-cyan-500/20 border border-cyan-500/30">
                       🧭 Explore Bihar
                     </div>
+
                     <h3 className="text-2xl font-bold text-white mb-1 group-hover:text-cyan-400 transition-colors">
                       Tourism
                     </h3>
-                    <p className="text-sm text-white/70">
-                      Discover scenic hills, sacred temples, bird sanctuaries & historic landmarks across Jamui district.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </Link>
 
-            {/* FaabCab Transport Partner Card */}
-            <Link href="/travel-tourism/faabcab" className="group block">
-              <div className="relative rounded-3xl border border-white/10 overflow-hidden bg-white/5 backdrop-blur-sm transition-all duration-300 hover:border-amber-500 hover:shadow-[0_0_30px_rgba(245,158,11,0.2)] hover:-translate-y-1">
-                <div className="relative aspect-[4/3] w-full overflow-hidden">
-                  <Image 
-                    src="/partners/transport_faabcab.png"
-                    alt="FaabCab Transport Partner"
-                    fill
-                    className="object-cover transition-transform duration-700 group-hover:scale-105"
-                    sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#05030f] via-[#05030f]/60 to-transparent" />
-                  <div className="absolute bottom-6 left-6 right-6">
-                    <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 mb-3 text-[11px] font-bold text-amber-300 bg-amber-500/20 border border-amber-500/30">
-                      🚗 Transport Partner
-                    </div>
-                    <h3 className="text-2xl font-bold text-white mb-1 group-hover:text-amber-400 transition-colors">
-                      FaabCab
-                    </h3>
                     <p className="text-sm text-white/70">
-                      Inter-city cabs, hourly rentals, airport & railway station transfers in Jamui.
+                      Discover scenic hills, sacred temples, bird sanctuaries &
+                      historic landmarks across Jamui district.
                     </p>
                   </div>
                 </div>

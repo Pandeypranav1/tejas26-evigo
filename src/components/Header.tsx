@@ -9,16 +9,14 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
   const pathname = usePathname();
   const active = pathname === href;
   return (
-    <Link 
-      href={href} 
-      className={`relative font-semibold text-[15px] transition-colors duration-300 ${
-        active ? "text-white" : "text-white/60 hover:text-white"
-      } group`}
+    <Link
+      href={href}
+      className={`relative font-semibold text-[15px] transition-colors duration-300 ${active ? "text-white" : "text-white/60 hover:text-white"
+        } group`}
     >
       {children}
-      <span className={`absolute -bottom-1.5 left-0 h-[2px] rounded-full bg-gradient-to-r from-violet-400 to-cyan-400 transition-all duration-300 ${
-        active ? "w-full shadow-[0_0_8px_rgba(167,139,250,0.8)]" : "w-0 group-hover:w-full"
-      }`} />
+      <span className={`absolute -bottom-1.5 left-0 h-[2px] rounded-full bg-gradient-to-r from-violet-400 to-cyan-400 transition-all duration-300 ${active ? "w-full shadow-[0_0_8px_rgba(167,139,250,0.8)]" : "w-0 group-hover:w-full"
+        }`} />
     </Link>
   );
 }
@@ -26,7 +24,7 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
 function AvatarDropdown({ user, role, onSignOut }: { user: any, role: string | null, onSignOut: () => void }) {
   const [open, setOpen] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
-  
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (dropRef.current && !dropRef.current.contains(e.target as Node)) {
@@ -41,7 +39,7 @@ function AvatarDropdown({ user, role, onSignOut }: { user: any, role: string | n
 
   return (
     <div className="relative flex items-center" ref={dropRef}>
-      <button 
+      <button
         onClick={() => setOpen(!open)}
         className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 p-[2px] transition-all hover:scale-105 hover:shadow-[0_0_15px_rgba(139,92,246,0.3)] focus:outline-none"
       >
@@ -54,16 +52,15 @@ function AvatarDropdown({ user, role, onSignOut }: { user: any, role: string | n
         )}
       </button>
 
-      <div 
-        className={`absolute right-0 top-full mt-3 w-56 origin-top-right rounded-2xl border border-white/10 bg-[#0f0a1e]/95 p-2 shadow-2xl backdrop-blur-xl transition-all duration-300 ${
-          open ? "scale-100 opacity-100" : "scale-95 opacity-0 pointer-events-none"
-        }`}
+      <div
+        className={`absolute right-0 top-full mt-3 w-56 origin-top-right rounded-2xl border border-white/10 bg-[#0f0a1e]/95 p-2 shadow-2xl backdrop-blur-xl transition-all duration-300 ${open ? "scale-100 opacity-100" : "scale-95 opacity-0 pointer-events-none"
+          }`}
       >
         <div className="px-3 py-2 border-b border-white/10 mb-2">
           <div className="text-xs font-semibold text-white/50 uppercase tracking-wider">{role === "provider" ? "Partner" : "Client"}</div>
           <div className="text-sm font-bold text-white truncate mt-0.5">{user.email}</div>
         </div>
-        
+
         <Link href="#" className="flex w-full items-center px-3 py-2.5 text-sm font-medium text-white/80 rounded-xl hover:bg-white/10 hover:text-white transition-colors" onClick={() => setOpen(false)}>
           Profile
         </Link>
@@ -177,18 +174,16 @@ export function Header() {
       </header>
 
       {/* Mobile Menu Overlay */}
-      <div 
-        className={`fixed inset-0 z-[55] bg-[#05030f]/80 backdrop-blur-xl transition-opacity duration-300 md:hidden ${
-          menuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-        }`}
+      <div
+        className={`fixed inset-0 z-[55] bg-[#05030f]/80 backdrop-blur-xl transition-opacity duration-300 md:hidden ${menuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+          }`}
         onClick={() => setMenuOpen(false)}
       />
 
       {/* Mobile Menu Slide-in Panel */}
-      <div 
-        className={`fixed top-0 right-0 z-[56] h-full w-[300px] bg-[#0a0616] border-l border-white/10 shadow-[-10px_0_30px_rgba(0,0,0,0.5)] transition-transform duration-300 ease-out md:hidden flex flex-col ${
-          menuOpen ? 'translate-x-0' : 'translate-x-full'
-        }`}
+      <div
+        className={`fixed top-0 right-0 z-[56] h-full w-[300px] bg-[#0a0616] border-l border-white/10 shadow-[-10px_0_30px_rgba(0,0,0,0.5)] transition-transform duration-300 ease-out md:hidden flex flex-col ${menuOpen ? 'translate-x-0' : 'translate-x-full'
+          }`}
       >
         <div className="flex flex-col flex-1 px-6 pt-24 pb-8 overflow-y-auto">
           {user && (
@@ -229,7 +224,7 @@ export function Header() {
               Contact
               <svg className="h-5 w-5 text-white/20 transition-transform group-hover:translate-x-1 group-hover:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </Link>
-            
+
             {user && (
               <>
                 <Link href="#" className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/5 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>

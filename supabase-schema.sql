@@ -71,6 +71,21 @@ ALTER TABLE public.users       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.page_visits ENABLE ROW LEVEL SECURITY;
 
 -- ─────────────────────────────────────────────────────────────
+-- 6. PROVIDER BOOKABILITY / SERVICE AREA MIGRATION
+--    Keep approval status separate from actual booking eligibility.
+-- ─────────────────────────────────────────────────────────────
+ALTER TABLE IF EXISTS public.providers
+  ADD COLUMN IF NOT EXISTS is_bookable BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS service_areas TEXT[] NOT NULL DEFAULT '{}';
+
+-- Only enable a configured platform-managed provider when the business logic intentionally marks it bookable.
+-- This does not derive bookability from registration approval.
+UPDATE public.providers
+SET is_bookable = true
+WHERE id = '6105241d-1d38-4274-b912-eea67f4c32b0'
+  AND registration_status <> 'rejected';
+
+-- ─────────────────────────────────────────────────────────────
 -- 4. RLS POLICIES
 --
 --    The backend uses the service_role key which bypasses RLS,

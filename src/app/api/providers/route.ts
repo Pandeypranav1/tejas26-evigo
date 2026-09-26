@@ -1,76 +1,50 @@
-import { NextRequest, NextResponse } from "next/server";
-import { connectDB } from "@/lib/mongodb";
-import { Provider } from "@/models/Provider";
+import { NextResponse } from "next/server";
+import { createAdminClient } from "@/lib/supabase";
 
-const MONGODB_AVAILABLE = !!process.env.MONGODB_URI;
+export const runtime = "nodejs";
 
-/** GET /api/providers — returns providers, MongoDB if configured else 404 hint */
-export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const category = searchParams.get("category");
-  const city     = searchParams.get("city");
-  const limit    = Math.min(Number(searchParams.get("limit") ?? "50"), 100);
-
-  if (!MONGODB_AVAILABLE) {
-    return NextResponse.json(
-      { ok: false, message: "MONGODB_URI not configured. App is running in localStorage demo mode." },
-      { status: 503 }
-    );
-  }
-
+export async function GET(request: Request) {
   try {
-    await connectDB();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const query: Record<string, any> = { isActive: true };
-    if (category && category !== "All") query.category = category;
-    if (city) query.city = { $regex: city, $options: "i" };
+    const { searchParams } = new URL(request.url);
+    const category = searchParams.get("category");
+    const city = searchParams.get("city");
+    const limit = Math.min(Number(searchParams.get("limit") ?? "50"), 100);
 
-    const providers = await Provider.find(query)
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .lean();
+    const supabase = createAdminClient();
+    let query = supabase
+      .from("providers")
+      .select("*")
+      .eq("registration_status", "approved")
+      .order("submitted_at", { ascending: false });
 
-    return NextResponse.json({ ok: true, data: providers });
-  } catch (err) {
-    console.error("[GET /api/providers]", err);
-    return NextResponse.json({ ok: false, message: "Database error" }, { status: 500 });
+    if (category && category !== "All") {
+      query = query.eq("category", category);
+    }
+
+    if (city) {
+      query = query.ilike("city", `%${city}%`);
+    }
+
+    const { data, error } = await query.limit(limit);
+
+    if (error) {
+      console.error("[GET /api/providers] Supabase error:", error);
+      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      providers: data ?? [],
+    });
+  } catch (err: any) {
+    console.error("[GET /api/providers] unexpected error:", err);
+    return NextResponse.json({ success: false, error: err?.message || "Internal server error" }, { status: 500 });
   }
 }
 
-/** POST /api/providers — register a new provider */
-export async function POST(req: NextRequest) {
-  if (!MONGODB_AVAILABLE) {
-    return NextResponse.json(
-      { ok: false, message: "MONGODB_URI not configured. Use the demo localStorage flow instead." },
-      { status: 503 }
-    );
-  }
-
-  try {
-    await connectDB();
-    const body = await req.json();
-
-    const {
-      ownerUid, businessName, ownerName, category,
-      startingPrice, city, phone, experienceYears, description, imageUrl,
-    } = body;
-
-    if (!ownerUid || !businessName || !ownerName || !category || !startingPrice || !city) {
-      return NextResponse.json({ ok: false, message: "Missing required fields" }, { status: 400 });
-    }
-
-    const provider = await Provider.create({
-      ownerUid, businessName, ownerName, category,
-      startingPrice: Number(startingPrice), city, phone,
-      experienceYears: Number(experienceYears ?? 0),
-      description: description ?? "",
-      imageUrl: imageUrl ?? "",
-      isActive: true,
-    });
-
-    return NextResponse.json({ ok: true, data: provider }, { status: 201 });
-  } catch (err) {
-    console.error("[POST /api/providers]", err);
-    return NextResponse.json({ ok: false, message: "Database error" }, { status: 500 });
-  }
+export async function POST(request: Request) {
+  return NextResponse.json(
+    { success: false, error: "Provider registration is handled via /api/providers/register." },
+    { status: 405 }
+  );
 }

@@ -185,56 +185,56 @@ export default function Home() {
           </ScrollReveal>
         </Container>
       </section>
-{/* ── 2b) Transport Partners ── */}
-<section id="transport-partners" className="py-12 sm:py-16 md:py-20 bg-zinc-50 w-full overflow-hidden">
-  <Container>
-    <ScrollReveal animation="fade-up">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-8 sm:mb-10">
-        <div>
-          <div className="inline-flex items-center gap-2 rounded-full px-3 sm:px-4 py-1 mb-3 sm:mb-4 text-xs sm:text-[13px] font-bold text-amber-700" style={{ background: "rgba(245, 158, 11, 0.1)", border: "1px solid rgba(245, 158, 11, 0.2)" }}>
-            🚗 Transport Partner
-          </div>
-          <h2 className="text-2xl sm:text-3xl md:text-[34px] font-black text-zinc-900 leading-tight">
-            FaabCab
-          </h2>
-          <p className="text-xs sm:text-sm text-zinc-500 mt-2 font-semibold">
-            Reliable transport services across Jamui, Bihar.
-          </p>
-        </div>
-      </div>
-    </ScrollReveal>
+      {/* ── 2b) Transport Partners ── */}
+      <section id="transport-partners" className="py-12 sm:py-16 md:py-20 bg-zinc-50 w-full overflow-hidden">
+        <Container>
+          <ScrollReveal animation="fade-up">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-8 sm:mb-10">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full px-3 sm:px-4 py-1 mb-3 sm:mb-4 text-xs sm:text-[13px] font-bold text-amber-700" style={{ background: "rgba(245, 158, 11, 0.1)", border: "1px solid rgba(245, 158, 11, 0.2)" }}>
+                  🚗 Transport Partner
+                </div>
+                <h2 className="text-2xl sm:text-3xl md:text-[34px] font-black text-zinc-900 leading-tight">
+                  FaabCab
+                </h2>
+                <p className="text-xs sm:text-sm text-zinc-500 mt-2 font-semibold">
+                  Reliable transport services across Jamui, Bihar.
+                </p>
+              </div>
+            </div>
+          </ScrollReveal>
 
-    <ScrollReveal animation="fade-up" staggerChildren={100}>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          "Inter-city One Way / Round Trip",
-          "Local Hourly Rental",
-          "Airport Transfer",
-          "Railway Pickup & Drop",
-        ].map((svc) => (
-          <div key={svc} className="rounded-2xl border border-zinc-200 bg-white p-4 hover:shadow-lg transition">
-            <div className="text-sm font-black text-zinc-900">{svc}</div>
-          </div>
-        ))}
-      </div>
-    </ScrollReveal>
+          <ScrollReveal animation="fade-up" staggerChildren={100}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                "Inter-city One Way / Round Trip",
+                "Local Hourly Rental",
+                "Airport Transfer",
+                "Railway Pickup & Drop",
+              ].map((svc) => (
+                <div key={svc} className="rounded-2xl border border-zinc-200 bg-white p-4 hover:shadow-lg transition">
+                  <div className="text-sm font-black text-zinc-900">{svc}</div>
+                </div>
+              ))}
+            </div>
+          </ScrollReveal>
 
-    <ScrollReveal animation="fade-up" delay={200} className="mt-6">
-      <div className="flex gap-4">
-        <Link href="/travel-tourism/faabcab" className="w-full sm:w-auto block">
-          <Button className="w-full whitespace-nowrap bg-indigo-600 text-white hover:bg-indigo-700">
-            Book Transport →
-          </Button>
-        </Link>
-        <Link href="https://faabcabs.com/" target="_blank" className="w-full sm:w-auto block">
-          <Button variant="secondary" className="w-full">
-            Visit FaabCab
-          </Button>
-        </Link>
-      </div>
-    </ScrollReveal>
-  </Container>
-</section>
+          <ScrollReveal animation="fade-up" delay={200} className="mt-6">
+            <div className="flex gap-4">
+              <Link href="/travel-tourism/faabcab" className="w-full sm:w-auto block">
+                <Button className="w-full whitespace-nowrap bg-indigo-600 text-white hover:bg-indigo-700">
+                  Book Transport →
+                </Button>
+              </Link>
+              <Link href="https://faabcabs.com/" target="_blank" className="w-full sm:w-auto block">
+                <Button variant="secondary" className="w-full">
+                  Visit FaabCab
+                </Button>
+              </Link>
+            </div>
+          </ScrollReveal>
+        </Container>
+      </section>
 
       {/* ── 3) Core Services (5-card row with Restaurant) ── */}
       <section className="py-12 sm:py-16 md:py-20 bg-white w-full">

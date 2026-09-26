@@ -87,19 +87,19 @@ export function BookingDetailsModal({
                 style={{
                   backgroundColor:
                     isCompleted ? "rgba(16,185,129,0.15)" :
-                    isConfirmed ? "rgba(6,182,212,0.15)" :
-                    isRejected ? "rgba(239,68,68,0.15)" :
-                    isCancelled ? "rgba(156,163,175,0.15)" : "rgba(245,158,11,0.15)",
+                      isConfirmed ? "rgba(6,182,212,0.15)" :
+                        isRejected ? "rgba(239,68,68,0.15)" :
+                          isCancelled ? "rgba(156,163,175,0.15)" : "rgba(245,158,11,0.15)",
                   borderColor:
                     isCompleted ? "rgba(16,185,129,0.3)" :
-                    isConfirmed ? "rgba(6,182,212,0.3)" :
-                    isRejected ? "rgba(239,68,68,0.3)" :
-                    isCancelled ? "rgba(156,163,175,0.3)" : "rgba(245,158,11,0.3)",
+                      isConfirmed ? "rgba(6,182,212,0.3)" :
+                        isRejected ? "rgba(239,68,68,0.3)" :
+                          isCancelled ? "rgba(156,163,175,0.3)" : "rgba(245,158,11,0.3)",
                   color:
                     isCompleted ? "#34d399" :
-                    isConfirmed ? "#22d3ee" :
-                    isRejected ? "#f87171" :
-                    isCancelled ? "#9ca3af" : "#fbbf24",
+                      isConfirmed ? "#22d3ee" :
+                        isRejected ? "#f87171" :
+                          isCancelled ? "#9ca3af" : "#fbbf24",
                 }}
               >
                 {currentStatus}
@@ -123,7 +123,6 @@ export function BookingDetailsModal({
           </button>
         </div>
 
-        {/* Visual Timeline (Requirement 3) */}
         <div className="p-4 sm:p-5 rounded-2xl bg-white/[0.03] border border-white/10 mb-6">
           <div className="text-xs font-black text-zinc-400 uppercase tracking-wider mb-4">
             Booking Progress Timeline
@@ -156,11 +155,10 @@ export function BookingDetailsModal({
               {/* Step 2: Waiting for Provider */}
               <div className="flex flex-col items-center text-center relative z-10">
                 <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all ${
-                    isPending
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all ${isPending
                       ? "bg-amber-500 text-white ring-4 ring-amber-500/20 animate-pulse"
                       : "bg-cyan-500 text-white"
-                  }`}
+                    }`}
                 >
                   {isPending ? "⏳" : "✓"}
                 </div>
@@ -173,20 +171,18 @@ export function BookingDetailsModal({
               {/* Step 3: Confirmed / Rejected */}
               <div className="flex flex-col items-center text-center relative z-10">
                 <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all ${
-                    isRejected
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all ${isRejected
                       ? "bg-red-500 text-white shadow-lg shadow-red-500/40"
                       : isConfirmed || isCompleted
-                      ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/40"
-                      : "bg-zinc-800 text-zinc-500 border border-white/10"
-                  }`}
+                        ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/40"
+                        : "bg-zinc-800 text-zinc-500 border border-white/10"
+                    }`}
                 >
                   {isRejected ? "✕" : isConfirmed || isCompleted ? "✓" : "3"}
                 </div>
                 <span
-                  className={`text-[11px] font-bold mt-1.5 ${
-                    isRejected ? "text-red-400" : isConfirmed || isCompleted ? "text-emerald-400" : "text-zinc-500"
-                  }`}
+                  className={`text-[11px] font-bold mt-1.5 ${isRejected ? "text-red-400" : isConfirmed || isCompleted ? "text-emerald-400" : "text-zinc-500"
+                    }`}
                 >
                   {isRejected ? "Rejected" : "Confirmed"}
                 </span>
@@ -198,18 +194,16 @@ export function BookingDetailsModal({
               {/* Step 4: Completed */}
               <div className="flex flex-col items-center text-center relative z-10">
                 <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all ${
-                    isCompleted
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all ${isCompleted
                       ? "bg-violet-600 text-white shadow-lg shadow-violet-600/40"
                       : "bg-zinc-800 text-zinc-500 border border-white/10"
-                  }`}
+                    }`}
                 >
                   {isCompleted ? "★" : "4"}
                 </div>
                 <span
-                  className={`text-[11px] font-bold mt-1.5 ${
-                    isCompleted ? "text-violet-300" : "text-zinc-500"
-                  }`}
+                  className={`text-[11px] font-bold mt-1.5 ${isCompleted ? "text-violet-300" : "text-zinc-500"
+                    }`}
                 >
                   Completed
                 </span>
@@ -232,8 +226,36 @@ export function BookingDetailsModal({
         <div className="space-y-4 text-xs font-medium">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-2xl bg-white/[0.02] border border-white/10">
             <div>
-              <span className="text-zinc-400 block mb-0.5">Service Type</span>
+              <span className="text-zinc-400 block mb-0.5">Provider</span>
+              <span className="font-bold text-white">{providerName}</span>
+            </div>
+            <div>
+              <span className="text-zinc-400 block mb-0.5">Service</span>
               <span className="font-bold text-white">{serviceTitle}</span>
+            </div>
+            <div>
+              <span className="text-zinc-400 block mb-0.5">Booking ID</span>
+              <span className="font-mono font-bold text-white">#{booking.id.slice(-8)}</span>
+            </div>
+            <div>
+              <span className="text-zinc-400 block mb-0.5">Status</span>
+              <span className="font-bold text-white">{currentStatus}</span>
+            </div>
+            <div>
+              <span className="text-zinc-400 block mb-0.5">Customer Name</span>
+              <span className="font-bold text-white">{booking.customer_name || booking.customerName || "Customer"}</span>
+            </div>
+            <div>
+              <span className="text-zinc-400 block mb-0.5">Customer Phone</span>
+              <span className="font-bold text-white">{booking.customer_phone || booking.customerPhone || "Not provided"}</span>
+            </div>
+            <div>
+              <span className="text-zinc-400 block mb-0.5">Customer Email</span>
+              <span className="font-bold text-white break-all">{booking.customer_email || booking.customerEmail || "Not provided"}</span>
+            </div>
+            <div>
+              <span className="text-zinc-400 block mb-0.5">Created At</span>
+              <span className="font-bold text-white">{new Date(booking.created_at || Date.now()).toLocaleString()}</span>
             </div>
             <div>
               <span className="text-zinc-400 block mb-0.5">Travel / Event Date</span>
@@ -251,7 +273,6 @@ export function BookingDetailsModal({
             )}
           </div>
 
-          {/* Transport specific details */}
           {isTransport && (pickup || drop) && (
             <div className="p-4 rounded-2xl bg-cyan-500/5 border border-cyan-500/20 space-y-2">
               <div className="text-xs font-black text-cyan-400 uppercase tracking-wider">
@@ -278,7 +299,6 @@ export function BookingDetailsModal({
             </div>
           )}
 
-          {/* Special Request */}
           {specialRequest && (
             <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/10">
               <span className="text-zinc-400 block text-[11px] mb-1 uppercase font-bold">
@@ -337,10 +357,10 @@ export function BookingDetailsModal({
                 {isCancelled
                   ? "Booking is cancelled"
                   : isCompleted
-                  ? "Completed bookings cannot be cancelled"
-                  : isRejected
-                  ? "Rejected bookings cannot be cancelled"
-                  : ""}
+                    ? "Completed bookings cannot be cancelled"
+                    : isRejected
+                      ? "Rejected bookings cannot be cancelled"
+                      : ""}
               </div>
             )}
 

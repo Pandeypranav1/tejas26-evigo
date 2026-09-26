@@ -7,7 +7,6 @@ import { Container } from "@/components/Container";
 import { Button } from "@/components/Button";
 import { SERVICE_CATEGORIES, type ServiceCategory } from "@/lib/constants";
 import { useAuth } from "@/context/AuthContext";
-import { saveDemoProvider } from "@/lib/demoStore";
 
 function isProbablyUrl(v: string) {
   try {
@@ -18,11 +17,23 @@ function isProbablyUrl(v: string) {
   }
 }
 
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function isValidIndianPhone(value: string) {
+  const digits = value.replace(/\D/g, "");
+  if (digits.length !== 10 && digits.length !== 12) return false;
+  if (digits.length === 12 && !digits.startsWith("91")) return false;
+  return /^[6-9]/.test(digits.slice(-10));
+}
+
 export default function PartnerPage() {
   const router = useRouter();
   const { user, role, loading } = useAuth();
   const [ownerName, setOwnerName] = useState("");
   const [businessName, setBusinessName] = useState("");
+  const [email, setEmail] = useState("");
   const [category, setCategory] = useState<ServiceCategory>("Catering");
   const [phone, setPhone] = useState("");
   const [city, setCity] = useState("");
@@ -45,12 +56,7 @@ export default function PartnerPage() {
     }
   }, [loading, role, router, user]);
 
-  // Partner page registration form
-  useEffect(() => {
-    // No auto-fill needed
-  }, [user]);
-
-  const submit = () => {
+  const submit = async () => {
     setError(null);
     setSuccess(false);
 
@@ -59,47 +65,71 @@ export default function PartnerPage() {
       return;
     }
 
-    if (!ownerName || !businessName || !phone || !city || !startingPrice || !description) {
+    if (!ownerName || !businessName || !email || !phone || !city || !startingPrice || !description) {
       setError("Please fill all required fields.");
       return;
     }
 
+    if (!isValidEmail(email)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+
+    if (!isValidIndianPhone(phone)) {
+      setError("Please enter a valid Indian phone number.");
+      return;
+    }
+
     if (imageUrl && !isProbablyUrl(imageUrl)) {
-      setError("Image URL must start with https://");
+      setError("Image URL must start with http:// or https://");
       return;
     }
 
     const price = Number(startingPrice);
-    if (!Number.isFinite(price) || price <= 0) {
-      setError("Starting price must be a valid positive number.");
+    if (!Number.isFinite(price) || price < 0) {
+      setError("Starting price must be a valid non-negative number.");
       return;
     }
 
     const exp = experienceYears ? Number(experienceYears) : 0;
+    if (experienceYears && (!Number.isInteger(exp) || exp < 0)) {
+      setError("Experience years must be a non-negative integer.");
+      return;
+    }
 
     setSubmitting(true);
 
-    // Use category default image if none provided
-    const finalImageUrl = imageUrl || "";
-
-    setTimeout(() => {
-      saveDemoProvider({
-        ownerUid: user.id,
-        ownerName,
-        businessName,
-        category,
-        phone,
-        city,
-        startingPrice: price,
-        experienceYears: exp,
-        description,
-        imageUrl: finalImageUrl,
+    try {
+      const response = await fetch("/api/providers/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          owner_name: ownerName,
+          business_name: businessName,
+          email,
+          category,
+          phone,
+          city,
+          starting_price: price,
+          experience_years: exp,
+          image_url: imageUrl,
+          description,
+        }),
       });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Unable to submit the provider registration.");
+      }
+
       setSuccess(true);
+      setError(null);
       setSubmitting(false);
-      // Redirect to provider dashboard after short delay
-      setTimeout(() => router.push("/provider/dashboard"), 1200);
-    }, 800);
+    } catch (err: any) {
+      setSubmitting(false);
+      setError(err.message || "Unable to submit the provider registration.");
+    }
   };
 
   const inputCls =
@@ -120,7 +150,7 @@ export default function PartnerPage() {
             </h1>
             <p className="mt-3 text-sm font-semibold text-zinc-500 leading-relaxed">
               Register your service and start receiving bookings instantly. Your listing goes
-              live immediately after submission.
+              live after review.
             </p>
 
             <div className="mt-6 rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
@@ -137,7 +167,6 @@ export default function PartnerPage() {
               </ul>
             </div>
 
-            {/* Auth check */}
             {!loading && (!user || role !== "provider") && (
               <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
                 ⚠️ Please{" "}
@@ -148,7 +177,6 @@ export default function PartnerPage() {
               </div>
             )}
 
-            {/* Tips */}
             <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-4">
               <div className="text-xs font-black text-blue-800 mb-2">💡 Tips for best results</div>
               <ul className="space-y-1 text-xs font-semibold text-blue-700">
@@ -159,7 +187,6 @@ export default function PartnerPage() {
             </div>
           </div>
 
-          {/* Right form column */}
           <div className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm">
             <div className="text-base font-black text-zinc-900 mb-5">
               Partner Registration Form
@@ -168,7 +195,7 @@ export default function PartnerPage() {
             <div className="grid gap-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="space-y-1.5">
-                  <div className={labelCls}>Your Name *</div>
+                  <div className={labelCls}>Owner Name *</div>
                   <input
                     value={ownerName}
                     onChange={(e) => setOwnerName(e.target.value)}
@@ -186,6 +213,17 @@ export default function PartnerPage() {
                   />
                 </label>
               </div>
+
+              <label className="space-y-1.5">
+                <div className={labelCls}>Email *</div>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className={inputCls}
+                  placeholder="name@example.com"
+                />
+              </label>
 
               <label className="space-y-1.5">
                 <div className={labelCls}>Service Category *</div>
@@ -275,12 +313,12 @@ export default function PartnerPage() {
 
               {success && (
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
-                  ✅ Listing submitted! Redirecting to your dashboard…
+                  ✅ Registration submitted successfully. Your listing is currently under review.
                 </div>
               )}
 
               <Button onClick={submit} disabled={submitting || success} className="w-full mt-2">
-                {submitting ? "Submitting…" : success ? "Success! ✓" : "Submit Listing →"}
+                {submitting ? "Submitting…" : success ? "Submitted ✓" : "Submit Listing →"}
               </Button>
             </div>
           </div>
