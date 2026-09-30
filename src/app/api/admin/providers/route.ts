@@ -103,7 +103,11 @@ export async function PATCH(request: Request) {
         if (action === "approve") {
             const { data, error } = await supabase
                 .from("providers")
-                .update({ registration_status: "approved" })
+                .update({
+                    registration_status: "approved",
+                    is_verified: true,
+                    is_bookable: true,
+                })
                 .eq("id", providerId)
                 .select()
                 .single();

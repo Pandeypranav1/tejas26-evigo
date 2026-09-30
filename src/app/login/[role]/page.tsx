@@ -4,6 +4,7 @@ import { useMemo, useState, useRef, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Container } from "@/components/Container";
 import { useAuth, UserRole } from "@/context/AuthContext";
+import { createClient } from "@/lib/client";
 
 function isValidEmail(v: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
@@ -82,6 +83,16 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Invalid OTP");
+
+      if (!data.session?.access_token || !data.session?.refresh_token) {
+        throw new Error("Login succeeded but the secure session could not be established. Please try again.");
+      }
+      const supabase = createClient();
+      const { error: sessionError } = await supabase.auth.setSession({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+      });
+      if (sessionError) throw sessionError;
       
       setNotice("Login successful!");
       login(data.user);
@@ -405,6 +416,23 @@ export default function LoginPage() {
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                <div
+                  style={{
+                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: 12,
+                    padding: "12px 16px",
+                    textAlign: "center",
+                  }}
+                >
+                  <p style={{ fontSize: 13, color: "#9ca3af", marginBottom: 2 }}>
+                    OTP sent to:
+                  </p>
+                  <p style={{ fontSize: 15, fontWeight: 700, color: "#22d3ee" }}>
+                    {email}
+                  </p>
+                </div>
+
                 {notice && (
                   <div
                     style={{
@@ -553,7 +581,7 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => {
                       setStep("email");
-                      setOtp(["", "", "", "", "", "", "", ""]);
+                      setOtp(["", "", "", "", "", ""]);
                       setNotice(null);
                       setError(null);
                       setResendTimer(0);
@@ -570,6 +598,21 @@ export default function LoginPage() {
                   >
                     Change Email
                   </button>
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    background: "rgba(255,255,255,0.02)",
+                    border: "1px dashed rgba(255,255,255,0.1)",
+                    textAlign: "center",
+                  }}
+                >
+                  <p style={{ fontSize: 11, color: "#9ca3af", margin: 0 }}>
+                    💡 If no email arrives, check your <strong>Spam</strong> or <strong>Promotions</strong> folder.
+                  </p>
                 </div>
               </div>
             )}

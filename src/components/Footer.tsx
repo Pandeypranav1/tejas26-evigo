@@ -4,6 +4,8 @@ import Link from "next/link";
 import { PageContainer } from "@/components/PageContainer";
 
 const QUICK_LINKS = [
+  { label: "Events", href: "/events" },
+  { label: "Travel & Tourism", href: "/travel-tourism" },
   { label: "Explore Providers", href: "/explore" },
   { label: "Hotel Partners", href: "/hotels" },
   { label: "Jamui Tourism", href: "/services/tourism" },
@@ -168,7 +170,7 @@ export function Footer() {
                 marginBottom: 16,
               }}
             >
-              Services
+              Event Services
             </h4>
             <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
               {SERVICES.map((s) => (

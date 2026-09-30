@@ -1,25 +1,26 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase";
+import { getAuthenticatedUser } from "@/lib/server";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("user_id");
+    const { user } = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json({ success: false, error: "Authentication required" }, { status: 401 });
+    }
 
-    if (!userId) {
-      return NextResponse.json(
-        { success: false, error: "user_id is required" },
-        { status: 400 }
-      );
+    const requestedUserId = new URL(request.url).searchParams.get("user_id");
+    if (requestedUserId && requestedUserId !== user.id) {
+      return NextResponse.json({ success: false, error: "Not authorized to view these notifications" }, { status: 403 });
     }
 
     const supabase = createAdminClient();
     const { data: notifications, error } = await supabase
       .from("notifications")
       .select("*")
-      .eq("user_id", userId)
+      .eq("user_id", user.id)
       .order("created_at", { ascending: false })
       .limit(50);
 
@@ -50,15 +51,19 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const body = await request.json();
-    const { id, user_id, markAllAsRead } = body;
+    const { id, markAllAsRead } = body;
+    const { user } = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json({ success: false, error: "Authentication required" }, { status: 401 });
+    }
 
     const supabase = createAdminClient();
 
-    if (markAllAsRead && user_id) {
+    if (markAllAsRead) {
       const { error } = await supabase
         .from("notifications")
         .update({ is_read: true })
-        .eq("user_id", user_id)
+        .eq("user_id", user.id)
         .eq("is_read", false);
 
       if (error) {
@@ -75,15 +80,24 @@ export async function PATCH(request: Request) {
     }
 
     if (id) {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("notifications")
         .update({ is_read: true })
-        .eq("id", id);
+        .eq("id", id)
+        .eq("user_id", user.id)
+        .select("id")
+        .maybeSingle();
 
       if (error) {
         return NextResponse.json(
           { success: false, error: error.message },
           { status: 500 }
+        );
+      }
+      if (!data) {
+        return NextResponse.json(
+          { success: false, error: "Notification not found" },
+          { status: 404 }
         );
       }
 
@@ -94,7 +108,7 @@ export async function PATCH(request: Request) {
     }
 
     return NextResponse.json(
-      { success: false, error: "id or (user_id and markAllAsRead) required" },
+      { success: false, error: "id or markAllAsRead is required" },
       { status: 400 }
     );
   } catch (err: any) {

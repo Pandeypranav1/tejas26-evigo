@@ -23,9 +23,12 @@ export default function TourismMap({
 
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
+    let cancelled = false;
 
     // Dynamic import to prevent SSR breakages
     import("leaflet").then((L) => {
+      if (cancelled || !mapContainerRef.current || mapInstanceRef.current) return;
+
       // Fix default marker asset paths
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -100,11 +103,10 @@ export default function TourismMap({
               ${place.description.slice(0, 90)}...
             </div>
             <a 
-              href="${
-                place.lat !== undefined && place.lng !== undefined
-                  ? `https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}`
-                  : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + " " + place.district + " Bihar")}`
-              }" 
+              href="${place.lat !== undefined && place.lng !== undefined
+            ? `https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}`
+            : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.name + " " + place.district + " Bihar")}`
+          }" 
               target="_blank" 
               rel="noopener noreferrer"
               style="display: inline-block; font-size: 11px; font-weight: 700; color: #0284c7; text-decoration: none;"
@@ -126,6 +128,7 @@ export default function TourismMap({
     });
 
     return () => {
+      cancelled = true;
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;

@@ -53,7 +53,7 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const body = await request.json();
-    const { user_id, full_name, phone, city } = body;
+    const { user_id, full_name, phone, city, experience_years, description, service_areas } = body;
 
     if (!user_id) {
       return NextResponse.json(
@@ -79,30 +79,50 @@ export async function PATCH(request: Request) {
     }
 
     // Keep email strictly read-only per requirements
-    const updates: Record<string, any> = {};
-    if (typeof full_name === "string") updates.full_name = full_name.trim();
-    if (typeof phone === "string") updates.phone = phone.trim();
-    if (typeof city === "string") updates.city = city.trim();
+    const profileUpdates: Record<string, any> = {};
+    if (typeof full_name === "string") profileUpdates.full_name = full_name.trim();
+    if (typeof phone === "string") profileUpdates.phone = phone.trim();
+    if (typeof city === "string") profileUpdates.city = city.trim();
 
-    const { data: updated, error: updateError } = await supabase
+    const { data: updatedProfile, error: updateError } = await supabase
       .from("profiles")
-      .update(updates)
+      .update(profileUpdates)
       .eq("id", user_id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (updateError) {
-      console.error("[PATCH /api/profile] Update error:", updateError);
+      console.error("[PATCH /api/profile] Profile update error:", updateError);
       return NextResponse.json(
         { success: false, error: updateError.message },
         { status: 500 }
       );
     }
 
+    // Also update provider-specific fields if provider row exists
+    const providerUpdates: Record<string, any> = {};
+    if (typeof full_name === "string") providerUpdates.owner_name = full_name.trim();
+    if (typeof phone === "string") providerUpdates.phone = phone.trim();
+    if (typeof city === "string") providerUpdates.city = city.trim();
+    if (typeof experience_years === "number") providerUpdates.experience_years = experience_years;
+    if (typeof description === "string") providerUpdates.description = description.trim();
+    if (Array.isArray(service_areas)) providerUpdates.service_areas = service_areas;
+
+    if (Object.keys(providerUpdates).length > 0) {
+      try {
+        await supabase
+          .from("providers")
+          .update(providerUpdates)
+          .eq("user_id", user_id);
+      } catch (provErr) {
+        console.warn("[PATCH /api/profile] Provider table update warning:", provErr);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: "Profile updated successfully",
-      profile: updated,
+      profile: updatedProfile,
     });
   } catch (err: any) {
     console.error("[PATCH /api/profile] Unexpected error:", err);

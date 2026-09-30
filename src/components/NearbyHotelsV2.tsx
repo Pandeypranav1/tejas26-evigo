@@ -26,10 +26,9 @@ import {
 const LeafletMap = dynamic(() => import("@/components/LeafletMap"), {
   ssr: false,
   loading: () => (
-    <div
-      className="w-full rounded-2xl animate-pulse"
-      style={{ height: 320, background: "rgba(255,255,255,0.05)" }}
-    />
+    <div className="flex w-full items-center justify-center rounded-2xl bg-zinc-900 text-sm font-medium text-white/70" style={{ height: "clamp(320px, 38vw, 430px)" }}>
+      Loading map...
+    </div>
   ),
 });
 
@@ -38,17 +37,17 @@ type Status = "idle" | "requesting" | "success" | "denied" | "error";
 type SearchMode = "city" | "gps";
 
 const RADIUS_OPTIONS = [
-  { label: "5 km",  value: 5  },
-  { label: "8 km",  value: 8  },
+  { label: "5 km", value: 5 },
+  { label: "8 km", value: 8 },
   { label: "15 km", value: 15 },
   { label: "30 km", value: 30 },
 ];
 
 const CATEGORY_EMOJI: Record<HotelPartner["category"], string> = {
-  hotel:      "🏨",
+  hotel: "🏨",
   restaurant: "🍽️",
-  homestay:   "🏡",
-  resort:     "🏖️",
+  homestay: "🏡",
+  resort: "🏖️",
 };
 
 function PartnerCard({
@@ -262,12 +261,13 @@ function PhotoLightbox({
 }
 
 export function NearbyHotelsV2() {
-  const [status, setStatus]             = useState<Status>("idle");
-  const [errorMsg, setErrorMsg]         = useState("");
-  const [radiusKm, setRadiusKm]         = useState(15);
-  const [searchMode, setSearchMode]     = useState<SearchMode>("city");
-  const [cityInput, setCityInput]       = useState("Jamui");
-  const [results, setResults]           = useState<PartnerWithDist[]>([]);
+  const [status, setStatus] = useState<Status>("idle");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [radiusKm, setRadiusKm] = useState(15);
+  const [mapTilesLoaded, setMapTilesLoaded] = useState(false);
+  const [searchMode, setSearchMode] = useState<SearchMode>("city");
+  const [cityInput, setCityInput] = useState("Jamui");
+  const [results, setResults] = useState<PartnerWithDist[]>([]);
   const [originCoords, setOriginCoords] = useState<{ lat: number; lng: number; label?: string } | null>(null);
   const [lightboxPartner, setLightboxPartner] = useState<PartnerWithDist | null>(null);
   const cachedGpsRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -275,6 +275,7 @@ export function NearbyHotelsV2() {
   // Core search — pure client-side Haversine against HOTEL_PARTNERS
   const runSearch = useCallback((originLat: number, originLng: number, r: number, label?: string) => {
     setErrorMsg("");
+    setMapTilesLoaded(false);
     setOriginCoords({ lat: originLat, lng: originLng, label });
     const matched: PartnerWithDist[] = HOTEL_PARTNERS
       .map((p) => ({ ...p, distanceKm: haversineKm(originLat, originLng, p.lat, p.lng) }))
@@ -308,6 +309,7 @@ export function NearbyHotelsV2() {
       return;
     }
     if (!navigator.geolocation) {
+      setSearchMode("city");
       setErrorMsg("Geolocation is not supported by your browser. Please search by city name.");
       setStatus("error");
       return;
@@ -319,10 +321,17 @@ export function NearbyHotelsV2() {
         runSearch(pos.coords.latitude, pos.coords.longitude, radiusKm, "Current Location");
       },
       (err) => {
+        setSearchMode("city");
         if (err.code === err.PERMISSION_DENIED) {
           setStatus("denied");
         } else {
-          setErrorMsg(err.message || "Failed to retrieve GPS location.");
+          setErrorMsg(
+            err.code === err.TIMEOUT
+              ? "Location lookup timed out. Search for a city instead."
+              : err.code === err.POSITION_UNAVAILABLE
+                ? "Your location is unavailable. Search for a city instead."
+                : err.message || "Location lookup failed. Search for a city instead."
+          );
           setStatus("error");
         }
       },
@@ -344,9 +353,8 @@ export function NearbyHotelsV2() {
       <div
         className="rounded-3xl p-6 sm:p-8 md:p-10 w-full"
         style={{
-          background: "rgba(255,255,255,0.04)",
+          background: "#09090b",
           border: "1px solid rgba(255,255,255,0.1)",
-          backdropFilter: "blur(16px)",
         }}
       >
         {/* Header */}
@@ -394,7 +402,7 @@ export function NearbyHotelsV2() {
         {/* Search bar & Controls */}
         <div className="flex flex-col gap-4 mb-8">
           {/* Mode Switcher */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
             <div
               className="inline-flex rounded-xl overflow-hidden p-1"
               style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)" }}
@@ -554,11 +562,21 @@ export function NearbyHotelsV2() {
             </div>
 
             {/* Interactive Leaflet Map */}
-            <div className="rounded-2xl overflow-hidden border border-white/10" style={{ height: 320 }}>
+            {!mapTilesLoaded && (
+              <p role="status" className="text-xs font-medium text-white/60">
+                Loading map tiles...
+              </p>
+            )}
+            <div
+              className="rounded-2xl overflow-hidden border border-white/10"
+              style={{ height: "clamp(320px, 38vw, 430px)" }}
+            >
               <LeafletMap
+                key={`${originCoords.lat}:${originCoords.lng}:${radiusKm}`}
                 userLat={originCoords.lat}
                 userLng={originCoords.lng}
                 partners={results}
+                onTilesLoaded={() => setMapTilesLoaded(true)}
                 onMarkerClick={(p) => setLightboxPartner(p as PartnerWithDist)}
               />
             </div>
@@ -571,7 +589,7 @@ export function NearbyHotelsV2() {
                     key={partner.id}
                     partner={partner}
                     onViewPhotos={(p) => setLightboxPartner(p)}
-                    onFocus={() => {}}
+                    onFocus={() => { }}
                   />
                 ))}
               </div>

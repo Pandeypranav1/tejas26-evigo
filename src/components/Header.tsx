@@ -123,9 +123,9 @@ export function Header() {
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-6 bg-white/[0.03] px-8 py-2.5 rounded-full border border-white/5 shadow-inner">
-            <NavLink href="/explore">Explore</NavLink>
-            <NavLink href="/services">Services</NavLink>
-            <NavLink href="/#travel-tourism">Travel & Tourism</NavLink>
+            <NavLink href="/">Home</NavLink>
+            <NavLink href="/events">Events</NavLink>
+            <NavLink href="/travel-tourism">Travel & Tourism</NavLink>
             <NavLink href="/about">About</NavLink>
             <NavLink href="/contact">Contact</NavLink>
           </nav>
@@ -143,7 +143,7 @@ export function Header() {
                 </Link>
                 <Link href="/explore" className="group relative inline-flex items-center justify-center overflow-hidden rounded-full bg-white text-[#05030f] px-6 py-2.5 font-bold shadow-[0_0_20px_rgba(255,255,255,0.3)] transition-all hover:scale-105 hover:shadow-[0_0_30px_rgba(255,255,255,0.5)]">
                   <span className="relative flex items-center gap-2">
-                    Book Now
+                    Book Service
                     <svg className="h-4 w-4 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                     </svg>
@@ -204,20 +204,20 @@ export function Header() {
           )}
 
           <nav className="flex flex-col gap-2">
-            <Link href="/explore" className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/5 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>
-              Explore Services
+            <Link href="/" className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/5 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>
+              Home
               <svg className="h-5 w-5 text-white/20 transition-transform group-hover:translate-x-1 group-hover:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </Link>
-            <Link href="/services" className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/5 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>
-              All Services
+            <Link href="/events" className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/5 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>
+              Events
               <svg className="h-5 w-5 text-white/20 transition-transform group-hover:translate-x-1 group-hover:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </Link>
-            <Link href="/#travel-tourism" className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/5 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>
+            <Link href="/travel-tourism" className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/5 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>
               Travel & Tourism
               <svg className="h-5 w-5 text-white/20 transition-transform group-hover:translate-x-1 group-hover:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </Link>
             <Link href="/about" className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/5 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>
-              About Us
+              About
               <svg className="h-5 w-5 text-white/20 transition-transform group-hover:translate-x-1 group-hover:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </Link>
             <Link href="/contact" className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/5 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>
@@ -240,6 +240,9 @@ export function Header() {
           </nav>
 
           <div className="mt-auto pt-8 flex flex-col gap-4">
+            <Link href="/explore" className="flex w-full items-center justify-center rounded-xl bg-white px-6 py-4 text-base font-bold text-[#05030f] transition-colors hover:bg-zinc-100" onClick={() => setMenuOpen(false)}>
+              Book Service
+            </Link>
             {!user ? (
               <>
                 <Link href="/login/client" className="flex w-full items-center justify-center rounded-xl bg-white/5 border border-white/10 px-6 py-4 text-base font-bold text-white transition-colors hover:bg-white/10" onClick={() => setMenuOpen(false)}>

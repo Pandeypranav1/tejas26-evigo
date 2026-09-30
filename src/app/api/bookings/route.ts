@@ -7,6 +7,7 @@ import {
   sendBookingCancelledEmailToProvider,
 } from "@/lib/email";
 import { createNotificationServer } from "@/lib/notifications";
+import { getAuthenticatedUser } from "@/lib/server";
 
 const FAABCAB_PROVIDER_UUID = "6105241d-1d38-4274-b912-eea67f4c32b0";
 
@@ -36,6 +37,11 @@ function getSupabaseClient() {
 
 export async function GET(request: Request) {
   try {
+    const { user } = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json({ success: false, error: "Authentication required" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const providerId = searchParams.get("provider_id");
     const providerUuid = searchParams.get("provider_uuid");
@@ -43,54 +49,47 @@ export async function GET(request: Request) {
     const userId = searchParams.get("user_id");
     const role = searchParams.get("role");
     const email = searchParams.get("email");
-    const phone = searchParams.get("phone");
-
     const supabase = getSupabaseClient();
     let query = supabase.from("bookings").select("*").order("created_at", { ascending: false });
 
     if (role === "provider" || providerId || providerUuid || (userId && !clientId)) {
-      const activeUserId = userId;
-      let targetProviderUuids: string[] = [];
-
-      if (activeUserId) {
-        // Query providers owned by this user
-        const { data: myProviders } = await supabase
-          .from("providers")
-          .select("id")
-          .eq("user_id", activeUserId);
-
-        if (myProviders && myProviders.length > 0) {
-          targetProviderUuids = myProviders.map((p) => p.id);
-        }
+      if (userId && userId !== user.id) {
+        return NextResponse.json({ success: false, error: "Not authorized to view these bookings" }, { status: 403 });
       }
 
-      if (providerUuid && !targetProviderUuids.includes(providerUuid)) {
-        targetProviderUuids.push(providerUuid);
+      const { data: myProviders, error: providersError } = await supabase
+        .from("providers")
+        .select("id")
+        .eq("user_id", user.id);
+      if (providersError) throw providersError;
+
+      const ownedProviderIds = (myProviders || []).map((provider) => provider.id);
+      if (providerUuid && !ownedProviderIds.includes(providerUuid)) {
+        return NextResponse.json({ success: false, error: "Not authorized to view these bookings" }, { status: 403 });
       }
 
-      // If user manages FaabCab or providerId is faab-cab
       const isFaabCab = providerId === "faab-cab" || providerId === FAABCAB_PROVIDER_UUID;
-      if (isFaabCab || targetProviderUuids.includes(FAABCAB_PROVIDER_UUID)) {
-        if (!targetProviderUuids.includes(FAABCAB_PROVIDER_UUID)) {
-          targetProviderUuids.push(FAABCAB_PROVIDER_UUID);
-        }
-        // Match either faab-cab or FaabCab UUID
-        query = query.or(`provider_id.eq.faab-cab,provider_uuid.in.(${targetProviderUuids.join(",")})`);
-      } else if (targetProviderUuids.length > 0) {
-        query = query.in("provider_uuid", targetProviderUuids);
-      } else if (providerId) {
-        query = query.eq("provider_id", providerId);
+      if (isFaabCab && !ownedProviderIds.includes(FAABCAB_PROVIDER_UUID)) {
+        return NextResponse.json({ success: false, error: "Not authorized to view FaabCab bookings" }, { status: 403 });
       }
-    } else if (clientId) {
-      if (email) {
-        query = query.or(`client_id.eq.${clientId},customer_email.eq.${email}`);
-      } else {
-        query = query.eq("client_id", clientId);
+
+      const providerIds = providerUuid ? [providerUuid] : ownedProviderIds;
+      if (providerIds.length === 0) {
+        return NextResponse.json({ success: true, bookings: [] });
       }
-    } else if (email) {
-      query = query.eq("customer_email", email);
-    } else if (phone) {
-      query = query.eq("customer_phone", phone);
+      query = isFaabCab
+        ? query.or(`provider_id.eq.faab-cab,provider_uuid.in.(${providerIds.join(",")})`)
+        : query.in("provider_uuid", providerIds);
+    } else {
+      if (clientId && clientId !== user.id) {
+        return NextResponse.json({ success: false, error: "Not authorized to view these bookings" }, { status: 403 });
+      }
+      if (email && email.toLowerCase() !== (user.email || "").toLowerCase()) {
+        return NextResponse.json({ success: false, error: "Not authorized to view these bookings" }, { status: 403 });
+      }
+      query = email
+        ? query.or(`client_id.eq.${user.id},customer_email.eq.${user.email}`)
+        : query.eq("client_id", user.id);
     }
 
     const { data, error } = await query;
@@ -109,6 +108,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+    const { user } = await getAuthenticatedUser();
 
     const {
       client_id,
@@ -155,6 +155,10 @@ export async function POST(request: Request) {
       ? service_id
       : (FAABCAB_SERVICE_MAP[targetServiceKey] || FAABCAB_SERVICE_MAP["inter-city"]);
 
+    if (client_id && (!user || client_id !== user.id)) {
+      return NextResponse.json({ success: false, error: "The signed-in user does not match this booking" }, { status: 403 });
+    }
+
     if (
       !effectiveCustomerName ||
       !effectiveCustomerPhone ||
@@ -200,17 +204,58 @@ export async function POST(request: Request) {
       bookingPayload.event_date = travel_date || effectiveEventDate;
       bookingPayload.event_time = pickup_time || effectiveEventTime;
       bookingPayload.guest_count = passenger_count ? Number(passenger_count) : effectiveGuestCount;
+
+      // Attempt server-side coordinate pre-resolution for pickup & drop
+      if (pickup_location && drop_location) {
+        try {
+          const { resolveTransportLocation } = await import("@/lib/transportLocation");
+          const pickupRes = await resolveTransportLocation({ text: pickup_location });
+          const dropRes = await resolveTransportLocation({ text: drop_location });
+          if (pickupRes.ok) {
+            bookingPayload.pickup_lat = pickupRes.lat;
+            bookingPayload.pickup_lng = pickupRes.lng;
+          }
+          if (dropRes.ok) {
+            bookingPayload.drop_lat = dropRes.lat;
+            bookingPayload.drop_lng = dropRes.lng;
+          }
+        } catch (resolveErr) {
+          console.warn("[POST /api/bookings] Geocoding pre-resolution warning:", resolveErr);
+        }
+      }
     } else {
       bookingPayload.event_date = effectiveEventDate;
       bookingPayload.event_time = effectiveEventTime;
       bookingPayload.guest_count = effectiveGuestCount;
     }
 
-    const { data: booking, error: insertError } = await supabase
+    let booking: any = null;
+    let insertError: any = null;
+
+    const firstInsert = await supabase
       .from("bookings")
       .insert(bookingPayload)
       .select()
       .single();
+
+    if (firstInsert.error && (bookingPayload.pickup_lat !== undefined || bookingPayload.drop_lat !== undefined)) {
+      // If error caused by unmigrated DB columns, strip coordinates and retry insert safely
+      delete bookingPayload.pickup_lat;
+      delete bookingPayload.pickup_lng;
+      delete bookingPayload.drop_lat;
+      delete bookingPayload.drop_lng;
+
+      const secondInsert = await supabase
+        .from("bookings")
+        .insert(bookingPayload)
+        .select()
+        .single();
+      booking = secondInsert.data;
+      insertError = secondInsert.error;
+    } else {
+      booking = firstInsert.data;
+      insertError = firstInsert.error;
+    }
 
     if (insertError) {
       console.error("[POST /api/bookings] Insert error:", insertError);
@@ -256,8 +301,18 @@ export async function POST(request: Request) {
         await createNotificationServer({
           userId: providerUserId,
           bookingId: booking.id,
-          title: "New Booking Request 🚀",
-          message: `New ${effectiveServiceType} booking from ${effectiveCustomerName} for ${bookingPayload.event_date}`,
+          title: isTransport ? "🚗 New Transport Booking" : "New Booking Request",
+          message: isTransport
+            ? [
+              `Customer: ${booking.customer_name || effectiveCustomerName}`,
+              `Pickup: ${booking.pickup_location || "Not provided"}`,
+              `Drop: ${booking.drop_location || "Not provided"}`,
+              `Date: ${booking.travel_date || "Not provided"}`,
+              `Time: ${booking.pickup_time || "Not provided"}`,
+              `Passengers: ${booking.passenger_count ?? "Not provided"}`,
+              `Service: ${booking.transport_service || effectiveServiceType}`,
+            ].join("\n")
+            : `New ${effectiveServiceType} booking from ${effectiveCustomerName} for ${bookingPayload.event_date}`,
           type: "booking_new",
         });
       }
@@ -307,7 +362,11 @@ export async function POST(request: Request) {
 export async function PATCH(request: Request) {
   try {
     const body = await request.json();
-    const { id, status, rejection_reason, action, client_id, user_id } = body;
+    const { id, status, rejection_reason, action } = body;
+    const { user } = await getAuthenticatedUser();
+    if (!user) {
+      return NextResponse.json({ success: false, error: "Authentication required" }, { status: 401 });
+    }
 
     const targetStatus = status || (action === "cancel" ? "cancelled" : null);
 
@@ -334,6 +393,36 @@ export async function PATCH(request: Request) {
       );
     }
 
+    const providerAction = ["confirmed", "rejected", "completed"].includes(targetStatus);
+    if (providerAction) {
+      const { data: myProviders, error: providerError } = await supabase
+        .from("providers")
+        .select("id")
+        .eq("user_id", user.id);
+      if (providerError) throw providerError;
+
+      const ownedProviderIds = (myProviders || []).map((provider) => provider.id);
+      const isFaabCabBooking = existingBooking.provider_id === "faab-cab" || existingBooking.provider_uuid === FAABCAB_PROVIDER_UUID;
+      const isAuthorizedProvider =
+        (existingBooking.provider_uuid && ownedProviderIds.includes(existingBooking.provider_uuid)) ||
+        (isFaabCabBooking && (ownedProviderIds.includes(FAABCAB_PROVIDER_UUID) || ownedProviderIds.length > 0)) ||
+        ownedProviderIds.length > 0;
+
+      if (!isAuthorizedProvider) {
+        return NextResponse.json({ success: false, error: "Not authorized to update this booking" }, { status: 403 });
+      }
+
+      const currentStatus = String(existingBooking.status || "pending").toLowerCase();
+      const validTransition = targetStatus === "completed"
+        ? ["confirmed", "accepted"].includes(currentStatus)
+        : currentStatus === "pending";
+      if (!validTransition) {
+        return NextResponse.json({ success: false, error: "This booking has already been updated" }, { status: 409 });
+      }
+    } else if (targetStatus === "cancelled" && existingBooking.client_id !== user.id) {
+      return NextResponse.json({ success: false, error: "Not authorized to cancel this booking" }, { status: 403 });
+    }
+
     const updates: Record<string, any> = {
       status: targetStatus,
     };
@@ -355,19 +444,18 @@ export async function PATCH(request: Request) {
       updates.provider_response_at = new Date().toISOString();
     }
 
+    // ── Completion ──
+    if (targetStatus === "completed") {
+      updates.completed_at = new Date().toISOString();
+    }
+
     // ── Client Cancellation ──
     if (targetStatus === "cancelled") {
       // Do not allow cancellation of completed or rejected bookings
-      if (existingBooking.status === "completed") {
+      if (!["pending", "confirmed"].includes(String(existingBooking.status || "").toLowerCase())) {
         return NextResponse.json(
-          { success: false, error: "Completed bookings cannot be cancelled" },
-          { status: 400 }
-        );
-      }
-      if (existingBooking.status === "rejected") {
-        return NextResponse.json(
-          { success: false, error: "Rejected bookings cannot be cancelled" },
-          { status: 400 }
+          { success: false, error: "This booking can no longer be cancelled" },
+          { status: 409 }
         );
       }
       updates.cancelled_at = new Date().toISOString();
@@ -378,7 +466,7 @@ export async function PATCH(request: Request) {
       .update(updates)
       .eq("id", id)
       .select()
-      .single();
+      .maybeSingle();
 
     if (updateErr) {
       console.error("[PATCH /api/bookings] Update error:", updateErr);
@@ -386,6 +474,9 @@ export async function PATCH(request: Request) {
         { success: false, error: updateErr.message },
         { status: 500 }
       );
+    }
+    if (!updatedBooking) {
+      return NextResponse.json({ success: false, error: "This booking was updated by another session" }, { status: 409 });
     }
 
     // ── Handle Notifications & Brevo Emails Server-Side ──

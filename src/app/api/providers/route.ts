@@ -6,11 +6,31 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
+    const userId = searchParams.get("user_id");
     const category = searchParams.get("category");
     const city = searchParams.get("city");
     const limit = Math.min(Number(searchParams.get("limit") ?? "50"), 100);
 
     const supabase = createAdminClient();
+
+    if (userId) {
+      const { data, error } = await supabase
+        .from("providers")
+        .select("*")
+        .eq("user_id", userId)
+        .order("submitted_at", { ascending: false });
+
+      if (error) {
+        console.error("[GET /api/providers] Supabase error:", error);
+        return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        success: true,
+        providers: data ?? [],
+      });
+    }
+
     let query = supabase
       .from("providers")
       .select("*")

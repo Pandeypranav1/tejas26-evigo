@@ -27,7 +27,7 @@ function checkRateLimit(ip: string): { allowed: boolean; remaining: number } {
 function buildSystemContext() {
   const placesText = TOURISM_PLACES.map(
     (p, i) =>
-      `${i + 1}. **${p.name}** (${p.category}) - ${p.district} District\n   - Details: ${p.description}\n   - GPS Coordinates: ${p.lat}, ${p.lng}`
+      `${i + 1}. **${p.name}** (${p.category}) - ${p.district} District\n   - Overview: ${p.overview}\n   - Historical background: ${p.historicalBackground}\n   - Significance: ${p.significance}\n   - Location: ${p.location}\n   - How to reach: ${p.howToReach}\n   - Timings: ${p.timings || "Not published in the reviewed official sources"}\n   - Entry fee: ${p.entryFee || "Not published in the reviewed official sources"}\n   - Sources: ${p.historySources.map((source) => `${source.label} (${source.url})`).join("; ")}\n   - Existing map coordinates: ${p.lat}, ${p.lng}`
   ).join("\n\n");
 
   const hotelsText = EVENT_VENUES.map(
@@ -44,19 +44,36 @@ VERIFIED PARTNER HOTELS & STAYS:
 ${hotelsText}
 
 INSTRUCTIONS FOR IN-DEPTH ANSWERS:
-1. When asked about a specific place (e.g. "Tell me about Simultala", "What is the history of Minto Tower", "Lachhuar Jain Mandir", etc.), provide a rich, structured response containing:
-   - **🏛️ History & Significance**: Cultural, historical, or religious significance of the place.
-   - **🗓️ Best Time to Visit & Duration**: Ideal season and approximate hours needed.
-   - **🎒 What to Expect & Practical Tips**: Trek difficulty, dress code / pilgrim etiquette, photography tips, facilities.
-   - **🏨 Where to Stay**: Mention nearby verified partner hotels (GenX Brij, Hotel Usha Nand Palace, Hotel JP Grand, Hotel Nirmala Inn).
-2. When asked for itineraries (e.g. 1-day or 2-day trip to Jamui), provide a practical time-wise plan (Morning, Afternoon, Evening) grouping nearby spots logically.
-3. Keep facts grounded in truth and never invent false historical details.
-4. Format with clean Markdown headers, bullet points, and appropriate emojis.`;
+1. For a specific place, use the structured overview, history, significance, travel fields, and source links above.
+2. Do not add dates, dynasties, events, travel times, facilities, fees, opening hours, or ecological facts that are not in the supplied records.
+3. Clearly attribute religious belief, local tradition, and disputed source accounts; do not present them as proven fact.
+4. If a field is unavailable, say the reviewed official sources do not publish it.
+5. Format with clean Markdown headers and short, readable sections.`;
 }
 
-// Deep, highly-informative heuristic knowledge base
 function generateHeuristicResponse(userMessage: string): string {
   const query = userMessage.toLowerCase();
+
+  const aliases: Record<string, string[]> = {
+    "simultala-hill-station": ["simultala", "tapobhumi"],
+    "kshatriya-kund-gram": ["kshatriya kund", "kund gram", "kundgram", "mahavira birth"],
+    "lachhuar-jain-mandir": ["lachhuar", "lachuar", "jain mandir"],
+    "kali-mandir-malaypur": ["kali mandir", "malaypur", "kali mata"],
+    "minto-tower-gidhaur": ["minto", "gidhaur", "clock tower"],
+    "giddheshwar-mandir": ["giddheshwar", "gidheshwar"],
+    "patneshwar-mandir": ["patneshwar", "patneswar"],
+    "nagi-dam-bhimbandh": ["nagi", "bhimbandh"],
+  };
+  const matchingPlace = TOURISM_PLACES.find((place) =>
+    (aliases[place.id] || []).some((alias) => query.includes(alias))
+  );
+
+  if (matchingPlace) {
+    const sourceLines = matchingPlace.historySources
+      .map((source) => `- [${source.label}](${source.url})`)
+      .join("\n");
+    return `### ${matchingPlace.name}\n\n#### About\n${matchingPlace.overview}\n\n#### History / Background\n${matchingPlace.historicalBackground}\n\n#### Significance\n${matchingPlace.significance}\n\n#### Travel Information\n- **Location:** ${matchingPlace.location}\n- **How to reach:** ${matchingPlace.howToReach}\n- **Timings:** ${matchingPlace.timings || "Not published in the reviewed official sources."}\n- **Entry fee:** ${matchingPlace.entryFee || "Not published in the reviewed official sources."}\n\n#### Sources\n${sourceLines}`;
+  }
 
   // 1. Simultala Hill Station
   if (query.includes("simultala")) {
@@ -171,43 +188,9 @@ Patneshwar Mandir is an ancient Shiva shrine renowned for its traditional stone 
 - **Time Needed**: **45 minutes to 1 hour**.`;
   }
 
-  // 8. Nagi Dam / Bhimbandh Wildlife Sanctuary
-  if (query.includes("nagi") || query.includes("bhimbandh") || query.includes("dam") || query.includes("bird") || query.includes("sanctuary")) {
-    return `### 🦆 Nagi Dam & Bhimbandh Wildlife Sanctuary — Premier Eco-Tourism & Birding
-
-#### 🌲 Ecological & Natural Significance
-**Nagi Dam Bird Sanctuary** is one of Eastern India's most important wetlands for migratory waterfowl. Surrounded by the dense forested hill tracts of Bhimbandh, it hosts over 100 species of migratory birds during winter, including Bar-headed Geese, Tufted Ducks, and Pochards.
-
-#### 🗓️ Best Time to Visit & Duration
-- **Peak Birding Season**: **November to February** (migratory bird season).
-- **Time Needed**: **3 to 5 hours** (ideal for morning birdwatching & photography).
-
-#### 🎒 Practical Tips
-- **Essentials**: Bring binoculars, telephoto camera, and insect repellent.
-- **Activities**: Birdwatching watchtowers, scenic lakeside walking, nature photography.
-
-🏨 **Stay & Dining**: **Hotel JP Grand** or **GenX Brij** in Jamui provide comfortable stays after your eco-safari.`;
-  }
-
   // Itineraries
   if (query.includes("2 day") || query.includes("two day") || query.includes("weekend") || query.includes("itinerary") || query.includes("plan")) {
-    return `### 🗺️ Curated 2-Day Jamui Heritage & Nature Itinerary
-
-**Day 1: Spiritual Circuit & Royal Heritage**
-- **08:30 AM – 11:30 AM**: **Kshatriya Kund Gram** (Lord Mahavira's birth valley) & **Lachhuar Jain Mandir**.
-- **01:00 PM – 02:30 PM**: Traditional lunch & rest at **GenX Brij** or **Hotel Usha Nand Palace**.
-- **03:30 PM – 05:00 PM**: Colonial architecture at **Minto Tower (Gidhaur)**.
-- **05:30 PM – 06:30 PM**: Sunset prayers at **Giddheshwar Mandir** on the rocky hill slope.
-- **07:30 PM**: Evening aarti at **Kali Mandir, Malaypur**.
-
----
-
-**Day 2: Scenic Nature, Hill Station & Bird Sanctuary**
-- **07:30 AM – 11:30 AM**: Day trek & exploration at **Simultala Hill Station** (Haldi Jharna & Lattu Pahar).
-- **01:30 PM – 04:30 PM**: Birdwatching & lake safari at **Nagi Dam Bird Sanctuary**.
-- **06:00 PM**: Return to Jamui for dinner and departure.
-
-🏨 **Verified Stays**: *GenX Brij*, *Hotel Usha Nand Palace*, *Hotel JP Grand*, *Hotel Nirmala Inn*.`;
+    return `### Jamui trip planning\n\nThe reviewed official sources do not provide a verified timed itinerary or travel durations for these places. Use the place detail sections above for source-backed locations and access notes, and confirm local transport and opening arrangements before setting a schedule.`;
   }
 
   if (query.includes("hotel") || query.includes("stay") || query.includes("restaurant") || query.includes("food")) {

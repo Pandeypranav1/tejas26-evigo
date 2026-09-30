@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Container } from "@/components/Container";
 import { Button } from "@/components/Button";
 import { useAuth } from "@/context/AuthContext";
-import { NotificationBell } from "@/components/NotificationBell";
+import { NotificationBell, type NotificationItem } from "@/components/NotificationBell";
 import { RejectBookingModal } from "@/components/RejectBookingModal";
+import { TransportRoutePanel } from "@/components/TransportRoutePanel";
 
 type FilterStatus = "all" | "pending" | "confirmed" | "completed" | "rejected" | "cancelled";
 
@@ -17,16 +18,34 @@ export default function ProviderDashboard() {
 
   const [bookings, setBookings] = useState<any[]>([]);
   const [services, setServices] = useState<any[]>([]);
+  const [profile, setProfile] = useState<any | null>(null);
+  const [providerRecord, setProviderRecord] = useState<any | null>(null);
   const [loadingData, setLoadingData] = useState(true);
   const [activeFilter, setActiveFilter] = useState<FilterStatus>("all");
 
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [selectedRejectBooking, setSelectedRejectBooking] = useState<any | null>(null);
   const [togglingService, setTogglingService] = useState<string | null>(null);
+  const [expandedRouteBookingId, setExpandedRouteBookingId] = useState<string | null>(null);
+  const [newBookingNotice, setNewBookingNotice] = useState<NotificationItem | null>(null);
+  const bookingCardRefs = useRef(new Map<string, HTMLDivElement>());
 
-  const loadData = useCallback(async (userId: string) => {
+  // Profile Edit State
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [editFullName, setEditFullName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editCity, setEditCity] = useState("");
+  const [editExperienceYears, setEditExperienceYears] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editServiceAreas, setEditServiceAreas] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [profileMessage, setProfileMessage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const loadData = useCallback(async (userId: string, showLoading = true) => {
     try {
-      setLoadingData(true);
+      if (showLoading) setLoadingData(true);
 
       // 1. Fetch provider bookings
       const bookingsRes = await fetch(`/api/bookings?role=provider&user_id=${encodeURIComponent(userId)}&provider_id=faab-cab`);
@@ -41,10 +60,24 @@ export default function ProviderDashboard() {
       if (servicesData.success && Array.isArray(servicesData.services)) {
         setServices(servicesData.services);
       }
+
+      // 3. Fetch user profile
+      const profileRes = await fetch(`/api/profile?user_id=${encodeURIComponent(userId)}`);
+      const profileData = await profileRes.json();
+      if (profileData.success && profileData.profile) {
+        setProfile(profileData.profile);
+      }
+
+      // 4. Fetch provider record
+      const providerRes = await fetch(`/api/providers?user_id=${encodeURIComponent(userId)}`);
+      const providerData = await providerRes.json();
+      if (providerData.success && Array.isArray(providerData.providers) && providerData.providers.length > 0) {
+        setProviderRecord(providerData.providers[0]);
+      }
     } catch (err) {
       console.warn("[ProviderDashboard] Error loading data:", err);
     } finally {
-      setLoadingData(false);
+      if (showLoading) setLoadingData(false);
     }
   }, []);
 
@@ -62,9 +95,134 @@ export default function ProviderDashboard() {
     loadData(user.id);
   }, [loading, role, router, user, loadData]);
 
+  const handleRealtimeBooking = useCallback((notification: NotificationItem) => {
+    setNewBookingNotice(notification);
+    if (user?.id) void loadData(user.id, false);
+  }, [loadData, user?.id]);
+
+  useEffect(() => {
+    if (!expandedRouteBookingId) return;
+    bookingCardRefs.current.get(expandedRouteBookingId)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [expandedRouteBookingId]);
+
+  useEffect(() => {
+    if (!newBookingNotice) return;
+    const timeout = window.setTimeout(() => setNewBookingNotice(null), 12000);
+    return () => window.clearTimeout(timeout);
+  }, [newBookingNotice]);
+
   const handleSignOut = () => {
     signOut();
     router.replace("/");
+  };
+
+  // Open Edit Profile Modal
+  const handleOpenEditProfile = () => {
+    setEditFullName(profile?.full_name || providerRecord?.owner_name || "");
+    setEditPhone(profile?.phone || providerRecord?.phone || "");
+    setEditCity(providerRecord?.city || profile?.city || "");
+    setEditExperienceYears(providerRecord?.experience_years ? String(providerRecord.experience_years) : "");
+    setEditDescription(providerRecord?.description || "");
+    setEditServiceAreas(Array.isArray(providerRecord?.service_areas) ? providerRecord.service_areas.join(", ") : "");
+    setProfileMessage(null);
+    setIsEditingProfile(true);
+  };
+
+  // Save Profile Changes
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    setSavingProfile(true);
+    setProfileMessage(null);
+
+    try {
+      const res = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: user.id,
+          full_name: editFullName.trim(),
+          phone: editPhone.trim(),
+          city: editCity.trim(),
+          experience_years: editExperienceYears ? Number(editExperienceYears) : undefined,
+          description: editDescription.trim(),
+          service_areas: editServiceAreas ? editServiceAreas.split(",").map((s) => s.trim()).filter(Boolean) : [],
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to update profile.");
+      }
+
+      setProfileMessage("Profile updated successfully! ✅");
+      await loadData(user.id, false);
+      setTimeout(() => {
+        setIsEditingProfile(false);
+        setProfileMessage(null);
+      }, 1200);
+    } catch (err: any) {
+      setProfileMessage(`Error: ${err.message}`);
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  // Upload Avatar
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    setUploadingAvatar(true);
+    setProfileMessage(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("user_id", user.id);
+
+      const res = await fetch("/api/profile/avatar", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to upload avatar.");
+      }
+
+      setProfile((prev: any) => ({ ...prev, avatar_url: data.avatar_url }));
+      setProfileMessage("Profile photo updated! 📸");
+    } catch (err: any) {
+      setProfileMessage(`Avatar error: ${err.message}`);
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  // Remove Avatar
+  const handleAvatarRemove = async () => {
+    if (!user) return;
+    setUploadingAvatar(true);
+
+    try {
+      const res = await fetch(`/api/profile/avatar?user_id=${encodeURIComponent(user.id)}`, {
+        method: "DELETE",
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to remove avatar.");
+      }
+
+      setProfile((prev: any) => ({ ...prev, avatar_url: null }));
+      setProfileMessage("Profile photo removed.");
+    } catch (err: any) {
+      setProfileMessage(`Avatar error: ${err.message}`);
+    } finally {
+      setUploadingAvatar(false);
+    }
   };
 
   // ── Accept Booking Handler ──
@@ -86,13 +244,12 @@ export default function ProviderDashboard() {
         throw new Error(data.error || "Failed to accept booking");
       }
 
-      setBookings((prev) =>
-        prev.map((b) =>
-          b.id === booking.id
-            ? { ...b, status: "confirmed", provider_response_at: new Date().toISOString() }
-            : b
-        )
-      );
+      const updatedBooking = data.booking;
+      setBookings((prev) => prev.map((item) => item.id === booking.id ? { ...item, ...updatedBooking } : item));
+      const isTransport = updatedBooking?.service_type === "Transport" || !!updatedBooking?.pickup_location;
+      if (isTransport && (updatedBooking?.status === "confirmed" || updatedBooking?.status === "accepted")) {
+        setExpandedRouteBookingId(String(updatedBooking.id));
+      }
     } catch (err: any) {
       alert(`Error accepting booking: ${err.message}`);
     } finally {
@@ -100,7 +257,7 @@ export default function ProviderDashboard() {
     }
   };
 
-  // ── Mark as Completed Handler ──
+  // ── Mark as Completed Handler (PART B FIX) ──
   const handleCompleteBooking = async (booking: any) => {
     setActionInProgress(booking.id);
     try {
@@ -116,12 +273,10 @@ export default function ProviderDashboard() {
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to complete booking");
+        throw new Error(data.error || "Failed to update booking status");
       }
 
-      setBookings((prev) =>
-        prev.map((b) => (b.id === booking.id ? { ...b, status: "completed" } : b))
-      );
+      setBookings((prev) => prev.map((item) => item.id === booking.id ? { ...item, ...data.booking } : item));
     } catch (err: any) {
       alert(`Error completing booking: ${err.message}`);
     } finally {
@@ -129,7 +284,7 @@ export default function ProviderDashboard() {
     }
   };
 
-  // ── Service Availability Toggle (Requirement 9) ──
+  // ── Service Availability Toggle ──
   const handleToggleService = async (serviceId: string, currentStatus: boolean) => {
     setTogglingService(serviceId);
     const newStatus = !currentStatus;
@@ -160,7 +315,7 @@ export default function ProviderDashboard() {
     }
   };
 
-  // ── Summary Metrics (Requirement 4) ──
+  // ── Summary Metrics ──
   const stats = useMemo(() => {
     const total = bookings.length;
     const pending = bookings.filter((b) => (b.status || "pending").toLowerCase() === "pending").length;
@@ -185,6 +340,13 @@ export default function ProviderDashboard() {
     return bookings.filter((b) => (b.status || "pending").toLowerCase() === activeFilter);
   }, [bookings, activeFilter]);
 
+  // Computed Identity Data
+  const displayName = profile?.full_name || providerRecord?.owner_name || user?.email?.split("@")[0] || "Provider";
+  const displayLocation = providerRecord?.city || profile?.city || "Jamui, Bihar";
+  const isVerified = providerRecord?.is_verified === true;
+  const avatarUrl = profile?.avatar_url;
+  const initials = displayName.split(" ").map((n: string) => n[0]).slice(0, 2).join("").toUpperCase();
+
   if (loading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#05030f] text-white">
@@ -201,40 +363,91 @@ export default function ProviderDashboard() {
   return (
     <main className="flex-1 py-10 bg-zinc-50 min-h-[90vh]">
       <Container>
-        {/* Header Hero Card */}
+        {/* ── PART A: RIDER / PROVIDER PROFILE HEADER ── */}
         <div className="relative rounded-3xl border border-zinc-200 bg-[#0f0a1e] text-white p-6 sm:p-8 overflow-hidden shadow-2xl">
           <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 rounded-full bg-violet-600/20 blur-[80px] pointer-events-none"></div>
           <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 rounded-full bg-cyan-600/20 blur-[80px] pointer-events-none"></div>
 
           <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
             <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-cyan-400 to-violet-600 p-0.5 shadow-lg shadow-cyan-500/30 shrink-0">
-                <div className="w-full h-full rounded-2xl bg-[#140b2a] flex items-center justify-center text-2xl font-black text-white">
-                  🚗
-                </div>
+              {/* Profile Photo Avatar with Edit Affordance */}
+              <div className="relative group shrink-0">
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt={displayName}
+                    className="w-20 h-20 rounded-2xl object-cover border-2 border-cyan-400/80 shadow-lg shadow-cyan-500/20"
+                  />
+                ) : (
+                  <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-cyan-500 via-violet-600 to-pink-500 p-0.5 shadow-lg shadow-cyan-500/30">
+                    <div className="w-full h-full rounded-2xl bg-[#140b2a] flex items-center justify-center text-2xl font-black text-white">
+                      {initials || "🚗"}
+                    </div>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={handleOpenEditProfile}
+                  className="absolute -bottom-1 -right-1 p-1.5 rounded-full bg-cyan-500 text-zinc-950 font-bold text-xs shadow-md hover:scale-110 transition-transform"
+                  title="Change profile photo"
+                >
+                  ✏️
+                </button>
               </div>
 
               <div>
-                <div className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/15 border border-cyan-500/30 px-3 py-1 text-xs font-bold text-cyan-300 mb-2 backdrop-blur-md">
-                  ✦ Verified Evigo Partner
+                {/* Real Verification Badge & Online Status */}
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-2">
+                  {isVerified ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-3 py-0.5 text-xs font-bold text-emerald-300 backdrop-blur-md">
+                      ✦ Verified Evigo Partner
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 border border-amber-500/30 px-3 py-0.5 text-xs font-bold text-amber-300 backdrop-blur-md">
+                      ⏳ Evigo Transport Partner
+                    </span>
+                  )}
+
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/15 border border-cyan-500/30 px-2.5 py-0.5 text-[11px] font-bold text-cyan-300">
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                    Online · Accepting Requests
+                  </span>
                 </div>
+
                 <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white mb-1">
-                  Provider Management Console
+                  Welcome, {displayName}
                 </h1>
-                <p className="text-xs text-zinc-400">
-                  Logged in as <strong className="text-zinc-200">{user.email}</strong> • Managing transport mobility & event bookings across Bihar.
-                </p>
+
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-xs text-zinc-400 font-medium">
+                  <span>🚗 Transport Partner / Rider</span>
+                  <span>•</span>
+                  <span>📍 {displayLocation}</span>
+                  <span>•</span>
+                  <span className="text-zinc-300 font-mono">✉️ {user.email}</span>
+                </div>
               </div>
             </div>
 
-            {/* Notification Bell & Logout */}
+            {/* Notification Bell, Edit Profile, Add Listing & Sign Out */}
             <div className="flex flex-wrap items-center justify-center lg:justify-end gap-3 border-t lg:border-t-0 border-white/10 pt-4 lg:pt-0">
-              <NotificationBell userId={user.id} />
+              <button
+                onClick={handleOpenEditProfile}
+                className="px-3.5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white text-xs font-bold transition-all flex items-center gap-1.5"
+              >
+                <span>✏️</span>
+                <span>Edit Profile</span>
+              </button>
+
+              <NotificationBell
+                userId={user.id}
+                dashboardHref="/provider/dashboard"
+                onNewBooking={handleRealtimeBooking}
+              />
 
               <button
                 onClick={() => loadData(user.id)}
-                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white text-xs font-bold transition-colors"
-                title="Refresh"
+                className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white text-xs font-bold transition-colors"
+                title="Refresh Dashboard"
               >
                 🔄
               </button>
@@ -256,7 +469,22 @@ export default function ProviderDashboard() {
           </div>
         </div>
 
-        {/* Summary Metrics Cards (Requirement 4) */}
+        {newBookingNotice && (
+          <div role="status" className="mt-4 flex flex-col gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div className="font-black">🚗 New booking request</div>
+              <p className="mt-1 whitespace-pre-line break-words text-xs leading-5">{newBookingNotice.message}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-3">
+              {newBookingNotice.booking_id && (
+                <a href={`/provider/dashboard#booking-${newBookingNotice.booking_id}`} className="font-bold text-emerald-800 underline underline-offset-4">View Booking</a>
+              )}
+              <button type="button" onClick={() => setNewBookingNotice(null)} aria-label="Dismiss new booking notice" className="grid h-9 w-9 place-items-center rounded-full text-lg text-emerald-900 hover:bg-emerald-100">×</button>
+            </div>
+          </div>
+        )}
+
+        {/* Summary Metrics Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8">
           <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
             <div className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Total Bookings</div>
@@ -283,7 +511,7 @@ export default function ProviderDashboard() {
           </div>
         </div>
 
-        {/* Service Availability Section (Requirement 9) */}
+        {/* Service Availability Section */}
         {services.length > 0 && (
           <div className="mt-10">
             <div className="flex items-center justify-between mb-4">
@@ -309,11 +537,10 @@ export default function ProviderDashboard() {
                         {svc.category || "Service"}
                       </span>
                       <span
-                        className={`text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                          svc.is_available
-                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                            : "bg-zinc-100 text-zinc-500 border border-zinc-200"
-                        }`}
+                        className={`text-[11px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${svc.is_available
+                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          : "bg-zinc-100 text-zinc-500 border border-zinc-200"
+                          }`}
                       >
                         <span className={`w-1.5 h-1.5 rounded-full ${svc.is_available ? "bg-emerald-500" : "bg-zinc-400"}`} />
                         {svc.is_available ? "Accepting" : "Paused"}
@@ -337,11 +564,10 @@ export default function ProviderDashboard() {
                     <button
                       onClick={() => handleToggleService(svc.id, svc.is_available)}
                       disabled={togglingService === svc.id}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 ${
-                        svc.is_available
-                          ? "bg-zinc-100 hover:bg-zinc-200 text-zinc-700"
-                          : "bg-emerald-600 hover:bg-emerald-700 text-white"
-                      }`}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 ${svc.is_available
+                        ? "bg-zinc-100 hover:bg-zinc-200 text-zinc-700"
+                        : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                        }`}
                     >
                       {togglingService === svc.id ? (
                         <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -358,7 +584,7 @@ export default function ProviderDashboard() {
           </div>
         )}
 
-        {/* Bookings Section (Requirement 4) */}
+        {/* Bookings Section */}
         <div className="mt-10">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-5">
             <div>
@@ -370,7 +596,7 @@ export default function ProviderDashboard() {
               </p>
             </div>
 
-            {/* Filter Tabs (Requirement 4) */}
+            {/* Filter Tabs */}
             <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-2xl bg-zinc-200/70 border border-zinc-300/60 self-start sm:self-auto">
               {(
                 [
@@ -385,11 +611,10 @@ export default function ProviderDashboard() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveFilter(tab.id)}
-                  className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all ${
-                    activeFilter === tab.id
-                      ? "bg-white text-zinc-900 shadow-sm"
-                      : "text-zinc-600 hover:text-zinc-900 hover:bg-white/50"
-                  }`}
+                  className={`px-3 py-1 rounded-xl text-xs font-extrabold transition-all ${activeFilter === tab.id
+                    ? "bg-white text-zinc-900 shadow-sm"
+                    : "text-zinc-600 hover:text-zinc-900 hover:bg-white/50"
+                    }`}
                 >
                   {tab.label} <span className="opacity-70 text-[10px]">({tab.count})</span>
                 </button>
@@ -444,6 +669,11 @@ export default function ProviderDashboard() {
                 return (
                   <div
                     key={b.id}
+                    id={`booking-${b.id}`}
+                    ref={(element) => {
+                      if (element) bookingCardRefs.current.set(String(b.id), element);
+                      else bookingCardRefs.current.delete(String(b.id));
+                    }}
                     className="rounded-3xl border border-zinc-200 bg-white p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
                   >
                     <div>
@@ -454,19 +684,19 @@ export default function ProviderDashboard() {
                           style={{
                             backgroundColor:
                               isCompleted ? "rgba(16,185,129,0.1)" :
-                              isConfirmed ? "rgba(6,182,212,0.1)" :
-                              isRejected ? "rgba(239,68,68,0.1)" :
-                              isCancelled ? "rgba(156,163,175,0.1)" : "rgba(245,158,11,0.1)",
+                                isConfirmed ? "rgba(6,182,212,0.1)" :
+                                  isRejected ? "rgba(239,68,68,0.1)" :
+                                    isCancelled ? "rgba(156,163,175,0.1)" : "rgba(245,158,11,0.1)",
                             borderColor:
                               isCompleted ? "rgba(16,185,129,0.3)" :
-                              isConfirmed ? "rgba(6,182,212,0.3)" :
-                              isRejected ? "rgba(239,68,68,0.3)" :
-                              isCancelled ? "rgba(156,163,175,0.3)" : "rgba(245,158,11,0.3)",
+                                isConfirmed ? "rgba(6,182,212,0.3)" :
+                                  isRejected ? "rgba(239,68,68,0.3)" :
+                                    isCancelled ? "rgba(156,163,175,0.3)" : "rgba(245,158,11,0.3)",
                             color:
                               isCompleted ? "#059669" :
-                              isConfirmed ? "#0891b2" :
-                              isRejected ? "#dc2626" :
-                              isCancelled ? "#6b7280" : "#d97706",
+                                isConfirmed ? "#0891b2" :
+                                  isRejected ? "#dc2626" :
+                                    isCancelled ? "#6b7280" : "#d97706",
                           }}
                         >
                           {currentStatus}
@@ -479,6 +709,11 @@ export default function ProviderDashboard() {
 
                       {/* Customer Name & Service */}
                       <div className="mb-3">
+                        {isTransport && (
+                          <span className="mb-1 inline-flex rounded-full bg-cyan-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-cyan-800">
+                            🚗 Transport
+                          </span>
+                        )}
                         <h3 className="text-base font-black text-zinc-900">
                           {customerName}
                         </h3>
@@ -552,7 +787,7 @@ export default function ProviderDashboard() {
                       )}
                     </div>
 
-                    {/* Action Buttons: Accept / Reject / Complete (Requirement 4) */}
+                    {/* Action Buttons: Accept / Reject / Complete (PART B FIX) */}
                     <div className="pt-4 border-t border-zinc-100 mt-2">
                       {isPending ? (
                         <div className="flex gap-2">
@@ -582,7 +817,7 @@ export default function ProviderDashboard() {
                           <button
                             onClick={() => handleCompleteBooking(b)}
                             disabled={actionInProgress === b.id}
-                            className="px-4 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold shadow-sm transition-all"
+                            className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold shadow-sm transition-all disabled:opacity-50"
                           >
                             {actionInProgress === b.id ? "Saving..." : "Mark Completed ✓"}
                           </button>
@@ -592,8 +827,20 @@ export default function ProviderDashboard() {
                           {isCompleted
                             ? "🎉 Journey Completed"
                             : isCancelled
-                            ? "🚫 Cancelled by Customer"
-                            : "Declined"}
+                              ? "🚫 Cancelled by Customer"
+                              : "Declined"}
+                        </div>
+                      )}
+                      {isTransport && isConfirmed && (
+                        <div className="mt-3">
+                          <button
+                            type="button"
+                            onClick={() => setExpandedRouteBookingId((current) => current === String(b.id) ? null : String(b.id))}
+                            className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100"
+                          >
+                            {expandedRouteBookingId === String(b.id) ? "Hide Trip Route" : "View Trip Route"}
+                          </button>
+                          {expandedRouteBookingId === String(b.id) && <TransportRoutePanel booking={b} />}
                         </div>
                       )}
                     </div>
@@ -616,6 +863,183 @@ export default function ProviderDashboard() {
           );
         }}
       />
+
+      {/* ── EDIT PROFILE MODAL (PART A) ── */}
+      {isEditingProfile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl text-zinc-900">
+            <div className="flex items-center justify-between mb-5 border-b border-zinc-100 pb-3">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-violet-600 block">Rider / Partner Profile</span>
+                <h3 className="text-xl font-black text-zinc-900">Edit Provider Profile</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditingProfile(false)}
+                className="rounded-full bg-zinc-100 p-2 text-zinc-500 hover:bg-zinc-200 text-xs font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Profile Photo Upload Section */}
+            <div className="mb-6 p-4 rounded-2xl bg-zinc-50 border border-zinc-200/60 flex items-center gap-4">
+              <div className="relative shrink-0">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt={displayName} className="w-16 h-16 rounded-2xl object-cover border border-zinc-200 shadow-sm" />
+                ) : (
+                  <div className="w-16 h-16 rounded-2xl bg-violet-600 text-white flex items-center justify-center text-xl font-black">
+                    {initials || "🚗"}
+                  </div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-bold text-zinc-800">Profile Photo</div>
+                <div className="text-[11px] text-zinc-500 mb-2">Upload your photo to personalize your rider identity</div>
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarUpload}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingAvatar}
+                    className="px-3 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold transition-all disabled:opacity-50"
+                  >
+                    {uploadingAvatar ? "Uploading..." : "Upload Photo"}
+                  </button>
+                  {avatarUrl && (
+                    <button
+                      type="button"
+                      onClick={handleAvatarRemove}
+                      disabled={uploadingAvatar}
+                      className="px-3 py-1.5 rounded-xl border border-rose-200 text-rose-600 hover:bg-rose-50 text-xs font-bold transition-all disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Profile Form */}
+            <form onSubmit={handleSaveProfile} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-zinc-600 uppercase mb-1">Authenticated Email (Read-Only)</label>
+                <input
+                  type="email"
+                  value={user?.email || ""}
+                  disabled
+                  className="w-full rounded-xl border border-zinc-200 bg-zinc-100 px-3 py-2.5 text-xs text-zinc-500 font-medium cursor-not-allowed"
+                />
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 uppercase mb-1">Full Name *</label>
+                  <input
+                    type="text"
+                    value={editFullName}
+                    onChange={(e) => setEditFullName(e.target.value)}
+                    required
+                    placeholder="e.g. Pranav Kumar"
+                    className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-xs text-zinc-900 font-semibold outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 uppercase mb-1">Phone Number</label>
+                  <input
+                    type="tel"
+                    value={editPhone}
+                    onChange={(e) => setEditPhone(e.target.value)}
+                    placeholder="e.g. +91 9876543210"
+                    className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-xs text-zinc-900 font-semibold outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 uppercase mb-1">City / Hub Location</label>
+                  <input
+                    type="text"
+                    value={editCity}
+                    onChange={(e) => setEditCity(e.target.value)}
+                    placeholder="e.g. Jamui, Bihar"
+                    className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-xs text-zinc-900 font-semibold outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 uppercase mb-1">Experience (Years)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editExperienceYears}
+                    onChange={(e) => setEditExperienceYears(e.target.value)}
+                    placeholder="e.g. 5"
+                    className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-xs text-zinc-900 font-semibold outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 uppercase mb-1">Service Areas (Comma Separated)</label>
+                <input
+                  type="text"
+                  value={editServiceAreas}
+                  onChange={(e) => setEditServiceAreas(e.target.value)}
+                  placeholder="e.g. Jamui, Patna, Gaya, Deoghar, Bhagalpur"
+                  className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-xs text-zinc-900 font-semibold outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 uppercase mb-1">About You / Description</label>
+                <textarea
+                  rows={3}
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="Describe your mobility fleet, experience, and service guarantees..."
+                  className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-xs text-zinc-900 font-medium outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100"
+                />
+              </div>
+
+              {profileMessage && (
+                <div
+                  className={`p-3 rounded-xl text-xs font-semibold ${
+                    profileMessage.startsWith("Error")
+                      ? "bg-rose-50 border border-rose-200 text-rose-800"
+                      : "bg-emerald-50 border border-emerald-200 text-emerald-800"
+                  }`}
+                >
+                  {profileMessage}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-100">
+                <button
+                  type="button"
+                  onClick={() => setIsEditingProfile(false)}
+                  className="px-4 py-2 rounded-xl border border-zinc-200 text-zinc-600 hover:bg-zinc-100 text-xs font-bold transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingProfile}
+                  className="px-5 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold shadow-md transition-all disabled:opacity-50"
+                >
+                  {savingProfile ? "Saving..." : "Save Changes ✓"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

@@ -25,11 +25,11 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: {
-    default: "Evigo — Real-time Event Services in Bihar",
+    default: "Evigo — Events, Travel & Tourism in Bihar",
     template: "%s | Evigo",
   },
   description:
-    "Book trusted event service providers in minutes — Catering, Photography, DJ, Mehendi & Makeup, and Restaurant/Hotel services across Bihar. No fake vendors, real-time bookings.",
+    "Plan events with trusted local providers, discover destinations across Bihar, and book transport through Evigo.",
   keywords: [
     "Evigo",
     "event services Bihar",
@@ -53,15 +53,15 @@ export const metadata: Metadata = {
     locale: "en_IN",
     url: "https://evigo.in",
     siteName: "Evigo",
-    title: "Evigo — Real-time Event Services in Bihar",
+    title: "Evigo — Events, Travel & Tourism in Bihar",
     description:
-      "Book trusted event service providers in minutes. Catering, Photography, DJ, Mehendi & Makeup, Restaurant & Hotel services.",
+      "Plan events with trusted local providers, discover destinations across Bihar, and book transport through Evigo.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Evigo — Real-time Event Services",
+    title: "Evigo — Events, Travel & Tourism in Bihar",
     description:
-      "Book verified event service providers across Bihar in minutes.",
+      "Plan events, discover Bihar and book trusted local transport with Evigo.",
   },
   robots: {
     index: true,

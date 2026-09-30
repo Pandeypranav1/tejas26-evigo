@@ -31,7 +31,7 @@ export default function ServicesPage() {
           {/* Services Category Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {/* Events Category Card */}
-            <Link href="/services/events" className="group block">
+            <Link href="/events" className="group block">
               <div className="relative rounded-3xl border border-white/10 overflow-hidden bg-white/5 backdrop-blur-sm transition-all duration-300 hover:border-violet-500 hover:shadow-[0_0_30px_rgba(139,92,246,0.2)] hover:-translate-y-1">
                 <div className="relative aspect-[4/3] w-full overflow-hidden">
                   <Image
@@ -63,7 +63,7 @@ export default function ServicesPage() {
             </Link>
 
             {/* Tourism Category Card */}
-            <Link href="/services/tourism" className="group block">
+            <Link href="/travel-tourism" className="group block">
               <div className="relative rounded-3xl border border-white/10 overflow-hidden bg-white/5 backdrop-blur-sm transition-all duration-300 hover:border-cyan-500 hover:shadow-[0_0_30px_rgba(6,182,212,0.2)] hover:-translate-y-1">
                 <div className="relative aspect-[4/3] w-full overflow-hidden">
                   <Image

@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { Container } from "@/components/Container";
 import { useAuth } from "@/context/AuthContext";
 import { saveDemoBooking, getDemoUser } from "@/lib/demoStore";
+import { CalendarDays, Clock3, MapPin, UsersRound } from "lucide-react";
 
 const FAABCAB_SERVICES = [
   {
@@ -38,6 +38,19 @@ const FAABCAB_SERVICES = [
   },
 ];
 
+type BookingField =
+  | "pickupLocation"
+  | "dropLocation"
+  | "travelDate"
+  | "pickupTime"
+  | "passengerCount"
+  | "selectedService"
+  | "customerName"
+  | "customerPhone"
+  | "customerEmail";
+
+type BookingErrors = Partial<Record<BookingField, string>>;
+
 export default function FaabCabPartnerPage() {
   const { user } = useAuth();
   const formRef = useRef<HTMLDivElement>(null);
@@ -58,55 +71,80 @@ export default function FaabCabPartnerPage() {
   // States
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<BookingErrors>({});
+  const [bookingStage, setBookingStage] = useState<"details" | "review" | "confirmed">("details");
   const [bookingId, setBookingId] = useState<string | null>(null);
+  const [bookingStatus, setBookingStatus] = useState("pending");
 
-  // Pre-fill user details if logged in
+  // Reset and pre-fill user details on auth change
   useEffect(() => {
     if (user) {
+      // Set email from Supabase if not already set
       if (user.email && !customerEmail) setCustomerEmail(user.email);
+      // Clear any previous booking data for new session
+      setCustomerName("");
+      setCustomerPhone("");
+      setBookingStage("details");
+      setBookingId(null);
+      setBookingStatus("pending");
+      setError(null);
+      setFieldErrors({});
+    } else {
+      // User signed out – clear all form state
+      setCustomerName("");
+      setCustomerPhone("");
+      setCustomerEmail("");
+      setBookingStage("details");
+      setBookingId(null);
+      setBookingStatus("pending");
+      setError(null);
+      setFieldErrors({});
     }
   }, [user]);
 
   const scrollToForm = (serviceTitle?: string) => {
     if (serviceTitle) setSelectedService(serviceTitle);
+    setBookingStage("details");
     formRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const clearFieldError = (field: BookingField) => {
+    setFieldErrors((current) => ({ ...current, [field]: undefined }));
+  };
+
+  const handleReview = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setSuccess(false);
+    const nextErrors: BookingErrors = {};
 
-    if (!customerName.trim()) {
-      setError("Please enter your name.");
-      return;
+    if (!pickupLocation.trim()) nextErrors.pickupLocation = "Enter a pickup location.";
+    if (!dropLocation.trim()) nextErrors.dropLocation = "Enter a destination.";
+    const today = new Date();
+    const todayLocal = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    if (!travelDate) nextErrors.travelDate = "Select a travel date.";
+    else if (travelDate < todayLocal) nextErrors.travelDate = "Choose today or a future date.";
+    if (!pickupTime) nextErrors.pickupTime = "Select a pickup time.";
+    if (!Number.isInteger(passengerCount) || passengerCount < 1 || passengerCount > 20) {
+      nextErrors.passengerCount = "Choose between 1 and 20 passengers.";
     }
-    if (!customerPhone.trim()) {
-      setError("Please enter a valid phone number.");
-      return;
+    if (!FAABCAB_SERVICES.some((service) => service.title === selectedService)) {
+      nextErrors.selectedService = "Select a FaabCab service.";
     }
-    if (!customerEmail.trim()) {
-      setError("Please enter a valid email address.");
-      return;
-    }
-    if (!pickupLocation.trim()) {
-      setError("Please enter the pickup location.");
-      return;
-    }
-    if (!dropLocation.trim()) {
-      setError("Please enter the destination / drop location.");
-      return;
-    }
-    if (!travelDate) {
-      setError("Please select a travel date.");
-      return;
-    }
-    if (!pickupTime) {
-      setError("Please select a pickup time.");
-      return;
+    if (!customerName.trim()) nextErrors.customerName = "Enter your name.";
+    if (!customerPhone.trim()) nextErrors.customerPhone = "Enter a phone number.";
+    if (!customerEmail.trim()) nextErrors.customerEmail = "Enter an email address.";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim())) {
+      nextErrors.customerEmail = "Enter a valid email address.";
     }
 
+    setFieldErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
+    setBookingStage("review");
+  };
+
+  const handleConfirmBooking = async () => {
+    if (submitting || bookingStage !== "review") return;
+    setError(null);
     setSubmitting(true);
 
     try {
@@ -156,26 +194,47 @@ export default function FaabCabPartnerPage() {
         notes: `Service: ${selectedService} | Time: ${pickupTime} | Passengers: ${passengerCount}${specialRequest ? ` | ${specialRequest}` : ""}`,
       });
 
-      setBookingId(data.booking?.id || `FC-${Math.floor(100000 + Math.random() * 900000)}`);
-      setSuccess(true);
+      setBookingId(data.booking?.id ? String(data.booking.id) : null);
+      setBookingStatus(data.booking?.status || "pending");
+      setBookingStage("confirmed");
     } catch (err: any) {
       console.error("[FaabCab Booking Error]", err);
-      setError(err.message || "Could not complete booking. Please try again.");
+      const message = typeof err?.message === "string" ? err.message : "";
+      setError(
+        message && message !== "Failed to fetch" && !message.includes("Something went wrong")
+          ? message
+          : "Unable to create the booking right now. Please review the details and try again."
+      );
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleResetForm = () => {
-    setSuccess(false);
+    setBookingStage("details");
     setBookingId(null);
+    setBookingStatus("pending");
     setError(null);
+    setFieldErrors({});
+    setCustomerName("");
+    setCustomerPhone("");
+    setCustomerEmail(user?.email || "");
     setPickupLocation("");
     setDropLocation("");
     setTravelDate("");
     setPickupTime("");
+    setPassengerCount(1);
+    setSelectedService("Inter-city One Way / Round Trip");
     setSpecialRequest("");
   };
+
+  const displayDate = travelDate
+    ? new Date(`${travelDate}T00:00:00`).toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })
+    : "Choose a date";
 
   return (
     <div className="min-h-screen bg-[#05030f] text-white selection:bg-cyan-500/30 relative">
@@ -192,13 +251,13 @@ export default function FaabCabPartnerPage() {
             {/* Nav Back Link */}
             <div className="flex justify-center mb-6">
               <Link
-                href="/services/tourism"
+                href="/travel-tourism"
                 className="inline-flex items-center gap-1.5 text-xs font-bold text-cyan-400 hover:text-cyan-300 transition-colors px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/20"
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
-                Back to Tourism & Heritage Trails
+                Back to Travel & Tourism
               </Link>
             </div>
 
@@ -264,14 +323,15 @@ export default function FaabCabPartnerPage() {
             {FAABCAB_SERVICES.map((svc) => {
               const isSelected = selectedService === svc.title;
               return (
-                <div
+                <button
+                  type="button"
                   key={svc.id}
                   onClick={() => scrollToForm(svc.title)}
-                  className={`group relative rounded-3xl p-6 border transition-all duration-300 cursor-pointer flex flex-col justify-between ${
-                    isSelected
-                      ? "bg-gradient-to-b from-cyan-950/40 via-[#0f0a1e] to-violet-950/30 border-cyan-400 shadow-[0_0_30px_rgba(6,182,212,0.25)] scale-[1.02]"
-                      : "bg-white/[0.04] border-white/10 hover:border-cyan-500/50 hover:bg-white/[0.07] hover:-translate-y-1"
-                  }`}
+                  aria-pressed={isSelected}
+                  className={`group relative w-full rounded-3xl p-6 border text-left transition-all duration-300 cursor-pointer flex flex-col justify-between ${isSelected
+                    ? "bg-gradient-to-b from-cyan-950/40 via-[#0f0a1e] to-violet-950/30 border-cyan-400 shadow-[0_0_30px_rgba(6,182,212,0.25)] scale-[1.02]"
+                    : "bg-white/[0.04] border-white/10 hover:border-cyan-500/50 hover:bg-white/[0.07] hover:-translate-y-1"
+                    }`}
                 >
                   <div>
                     <div className="flex items-center justify-between mb-4">
@@ -282,12 +342,12 @@ export default function FaabCabPartnerPage() {
                         {svc.tag}
                       </span>
                     </div>
-                    <h3 className="text-lg font-bold text-white mb-2 group-hover:text-cyan-300 transition-colors">
+                    <span className="block text-lg font-bold text-white mb-2 group-hover:text-cyan-300 transition-colors">
                       {svc.title}
-                    </h3>
-                    <p className="text-xs text-white/60 leading-relaxed mb-4">
+                    </span>
+                    <span className="mb-4 block text-xs leading-relaxed text-white/60">
                       {svc.description}
-                    </p>
+                    </span>
                   </div>
 
                   <div className="pt-4 border-t border-white/10 flex items-center justify-between">
@@ -300,245 +360,202 @@ export default function FaabCabPartnerPage() {
                       </span>
                     )}
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
         </Container>
       </section>
 
-      {/* Internal Transport Booking Section */}
-      <section ref={formRef} className="py-14 md:py-20 border-t border-white/10 bg-[#070414] z-10 relative">
+      <section ref={formRef} className="relative z-10 border-t border-white/10 bg-[#09090b] py-12 sm:py-16">
         <Container>
-          <div className="max-w-3xl mx-auto">
-            <div className="text-center mb-10">
-              <div className="inline-flex items-center gap-2 rounded-full px-3.5 py-1 text-xs font-bold text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 mb-3">
-                <span>📋</span> Evigo Internal Booking
+          <div className="mx-auto max-w-7xl">
+            <div className="mb-8 flex flex-col gap-2 sm:mb-10 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-300">Evigo booking</p>
+                <h2 className="mt-2 text-3xl font-black text-white sm:text-4xl">Plan your FaabCab ride</h2>
+                <p className="mt-2 max-w-xl text-sm leading-6 text-white/65">
+                  Enter your journey, review every detail, then confirm your request.
+                </p>
               </div>
-              <h2 className="text-3xl font-black text-white mb-2">
-                Book FaabCab Transport
-              </h2>
-              <p className="text-sm text-white/60">
-                Submit your journey request directly inside Evigo. Your request will be processed immediately by FaabCab.
-              </p>
             </div>
 
-            {/* Success State Banner */}
-            {success ? (
-              <div className="rounded-3xl p-8 bg-gradient-to-br from-emerald-950/50 via-[#0a1f18] to-cyan-950/40 border border-emerald-500/40 shadow-[0_0_40px_rgba(16,185,129,0.2)] text-center">
-                <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-3xl mx-auto mb-4 animate-bounce">
-                  ✅
+            {bookingStage === "confirmed" ? (
+              <div className="mx-auto max-w-3xl rounded-2xl border border-emerald-400/30 bg-[#111714] p-5 sm:p-8">
+                <div className="flex items-start gap-4">
+                  <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-emerald-400/15 text-2xl text-emerald-300">✓</span>
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-300">Booking Confirmed</p>
+                    <h3 className="mt-1 text-2xl font-black text-white">Your request is with FaabCab</h3>
+                    {bookingId && <p className="mt-2 font-mono text-sm text-white/70">Reference #{bookingId}</p>}
+                  </div>
                 </div>
-                <h3 className="text-2xl font-black text-white mb-2">
-                  Transport Request Confirmed!
-                </h3>
-                <p className="text-sm text-emerald-300 font-medium mb-4">
-                  Message sent successfully. Your booking is saved under ID:{" "}
-                  <span className="font-bold text-white underline">{bookingId}</span>
-                </p>
-                <div className="max-w-md mx-auto bg-black/40 border border-white/10 rounded-2xl p-4 text-left text-xs space-y-2 mb-6 text-white/80">
-                  <div><strong className="text-white">Service:</strong> {selectedService}</div>
-                  <div><strong className="text-white">Pickup:</strong> {pickupLocation}</div>
-                  <div><strong className="text-white">Destination:</strong> {dropLocation}</div>
-                  <div><strong className="text-white">Date & Time:</strong> {travelDate} at {pickupTime}</div>
-                  <div><strong className="text-white">Passenger(s):</strong> {passengerCount}</div>
+                <div className="mt-6 grid gap-3 rounded-xl border border-white/10 bg-black/20 p-4 text-sm sm:grid-cols-2">
+                  <div><span className="block text-xs text-white/50">Route</span><span className="mt-1 block font-semibold text-white">{pickupLocation} → {dropLocation}</span></div>
+                  <div><span className="block text-xs text-white/50">Travel date &amp; time</span><span className="mt-1 block font-semibold text-white">{displayDate} · {pickupTime}</span></div>
+                  <div><span className="block text-xs text-white/50">Passengers</span><span className="mt-1 block font-semibold text-white">{passengerCount}</span></div>
+                  <div><span className="block text-xs text-white/50">Selected service</span><span className="mt-1 block font-semibold text-white">{selectedService}</span></div>
+                  <div><span className="block text-xs text-white/50">Status</span><span className="mt-1 block font-semibold capitalize text-white">{bookingStatus}</span></div>
                 </div>
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                  <Link
-                    href="/dashboard"
-                    className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 text-white text-xs font-bold transition-all hover:scale-105"
-                  >
-                    View in Client Dashboard →
+                <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                  <Link href="/dashboard" className="inline-flex min-h-12 flex-1 items-center justify-center rounded-xl bg-emerald-400 px-5 text-sm font-black text-zinc-950 transition hover:bg-emerald-300">
+                    View Booking
                   </Link>
-                  <button
-                    onClick={handleResetForm}
-                    className="w-full sm:w-auto px-6 py-3 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-bold hover:bg-white/20 transition-colors"
-                  >
+                  <button type="button" onClick={handleResetForm} className="min-h-12 flex-1 rounded-xl border border-white/15 px-5 text-sm font-bold text-white transition hover:bg-white/5">
                     Book Another Journey
                   </button>
                 </div>
               </div>
             ) : (
-              /* Booking Form Card */
-              <div className="rounded-3xl p-6 sm:p-10 bg-white/[0.03] border border-white/10 backdrop-blur-md shadow-2xl">
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  {/* Service Selector */}
-                  <div>
-                    <label className="block text-xs font-bold text-white/80 uppercase tracking-wider mb-3">
-                      Select Transport Service *
-                    </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {FAABCAB_SERVICES.map((s) => (
-                        <button
-                          key={s.id}
-                          type="button"
-                          onClick={() => setSelectedService(s.title)}
-                          className={`p-3.5 rounded-xl border text-left text-xs font-bold transition-all flex items-center gap-2.5 ${
-                            selectedService === s.title
-                              ? "bg-cyan-500/20 border-cyan-400 text-white shadow-[0_0_15px_rgba(6,182,212,0.2)]"
-                              : "bg-white/5 border-white/10 text-white/70 hover:bg-white/10 hover:text-white"
-                          }`}
-                        >
-                          <span>{s.icon}</span>
-                          <span className="truncate">{s.title}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+              <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+                <div className="min-w-0">
+                  <ol className="mb-6 grid grid-cols-3 overflow-hidden rounded-xl border border-white/10 bg-white/[0.03] text-xs sm:text-sm">
+                    {["Fill Details", "Review Booking", "Confirm & Book"].map((label, index) => {
+                      const active = bookingStage === "details" ? index === 0 : index === 1;
+                      const complete = bookingStage === "review" && index === 0;
+                      return (
+                        <li key={label} className={`flex min-h-12 items-center justify-center gap-2 px-2 text-center font-bold ${active ? "bg-emerald-400/10 text-emerald-200" : complete ? "text-emerald-300" : "text-white/45"}`}>
+                          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full border border-current text-[11px]">{complete ? "✓" : index + 1}</span>
+                          <span>{label}</span>
+                        </li>
+                      );
+                    })}
+                  </ol>
 
-                  {/* Customer Information Row */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-white/80 uppercase tracking-wider mb-2">
-                        Customer Name *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={customerName}
-                        onChange={(e) => setCustomerName(e.target.value)}
-                        placeholder="Your full name"
-                        className="w-full bg-white/5 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-cyan-400 transition-colors"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-white/80 uppercase tracking-wider mb-2">
-                        Customer Phone *
-                      </label>
-                      <input
-                        type="tel"
-                        required
-                        value={customerPhone}
-                        onChange={(e) => setCustomerPhone(e.target.value)}
-                        placeholder="Mobile number"
-                        className="w-full bg-white/5 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-cyan-400 transition-colors"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-white/80 uppercase tracking-wider mb-2">
-                        Customer Email *
-                      </label>
-                      <input
-                        type="email"
-                        required
-                        value={customerEmail}
-                        onChange={(e) => setCustomerEmail(e.target.value)}
-                        placeholder="Email address"
-                        className="w-full bg-white/5 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-cyan-400 transition-colors"
-                      />
-                    </div>
-                  </div>
+                  {bookingStage === "details" ? (
+                    <form onSubmit={handleReview} noValidate className="space-y-5">
+                      <section className="rounded-2xl border border-white/10 bg-[#111214] p-4 sm:p-6">
+                        <div className="mb-5">
+                          <p className="text-xs font-bold uppercase tracking-[0.15em] text-emerald-300">Step 1</p>
+                          <h3 className="mt-1 text-xl font-black text-white">Journey</h3>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <label className="block min-w-0">
+                            <span className="mb-2 flex items-center gap-2 text-sm font-semibold text-white/85"><MapPin size={16} aria-hidden="true" /> Pickup location</span>
+                            <input type="text" value={pickupLocation} onChange={(event) => { setPickupLocation(event.target.value); clearFieldError("pickupLocation"); }} placeholder="Railway station, hotel or address" aria-invalid={Boolean(fieldErrors.pickupLocation)} className="min-h-12 w-full rounded-xl border border-white/15 bg-white/[0.04] px-4 text-base text-white outline-none placeholder:text-white/35 focus:border-emerald-300" />
+                            {fieldErrors.pickupLocation && <span className="mt-1.5 block text-sm text-rose-300">{fieldErrors.pickupLocation}</span>}
+                          </label>
+                          <label className="block min-w-0">
+                            <span className="mb-2 flex items-center gap-2 text-sm font-semibold text-white/85"><MapPin size={16} aria-hidden="true" /> Drop location</span>
+                            <input type="text" value={dropLocation} onChange={(event) => { setDropLocation(event.target.value); clearFieldError("dropLocation"); }} placeholder="Destination or drop address" aria-invalid={Boolean(fieldErrors.dropLocation)} className="min-h-12 w-full rounded-xl border border-white/15 bg-white/[0.04] px-4 text-base text-white outline-none placeholder:text-white/35 focus:border-emerald-300" />
+                            {fieldErrors.dropLocation && <span className="mt-1.5 block text-sm text-rose-300">{fieldErrors.dropLocation}</span>}
+                          </label>
+                        </div>
+                      </section>
 
-                  {/* Locations Row */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-white/80 uppercase tracking-wider mb-2">
-                        Pickup Location *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={pickupLocation}
-                        onChange={(e) => setPickupLocation(e.target.value)}
-                        placeholder="e.g. Jamui Railway Station / Hotel Brij"
-                        className="w-full bg-white/5 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-cyan-400 transition-colors"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-white/80 uppercase tracking-wider mb-2">
-                        Destination / Drop Location *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={dropLocation}
-                        onChange={(e) => setDropLocation(e.target.value)}
-                        placeholder="e.g. Patna Airport / Deoghar Temple"
-                        className="w-full bg-white/5 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-cyan-400 transition-colors"
-                      />
-                    </div>
-                  </div>
+                      <section className="rounded-2xl border border-white/10 bg-[#111214] p-4 sm:p-6">
+                        <div className="mb-5">
+                          <p className="text-xs font-bold uppercase tracking-[0.15em] text-emerald-300">Step 2</p>
+                          <h3 className="mt-1 text-xl font-black text-white">Trip details</h3>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-3">
+                          <label className="block min-w-0">
+                            <span className="mb-2 flex items-center gap-2 text-sm font-semibold text-white/85"><CalendarDays size={16} aria-hidden="true" /> Travel date</span>
+                            <input type="date" value={travelDate} onChange={(event) => { setTravelDate(event.target.value); clearFieldError("travelDate"); }} aria-invalid={Boolean(fieldErrors.travelDate)} className="min-h-12 w-full min-w-0 rounded-xl border border-white/15 bg-white/[0.04] px-3 text-base text-white outline-none focus:border-emerald-300" />
+                            {fieldErrors.travelDate && <span className="mt-1.5 block text-sm text-rose-300">{fieldErrors.travelDate}</span>}
+                          </label>
+                          <label className="block min-w-0">
+                            <span className="mb-2 flex items-center gap-2 text-sm font-semibold text-white/85"><Clock3 size={16} aria-hidden="true" /> Pickup time</span>
+                            <input type="time" value={pickupTime} onChange={(event) => { setPickupTime(event.target.value); clearFieldError("pickupTime"); }} aria-invalid={Boolean(fieldErrors.pickupTime)} className="min-h-12 w-full min-w-0 rounded-xl border border-white/15 bg-white/[0.04] px-3 text-base text-white outline-none focus:border-emerald-300" />
+                            {fieldErrors.pickupTime && <span className="mt-1.5 block text-sm text-rose-300">{fieldErrors.pickupTime}</span>}
+                          </label>
+                          <label className="block min-w-0">
+                            <span className="mb-2 flex items-center gap-2 text-sm font-semibold text-white/85"><UsersRound size={16} aria-hidden="true" /> Passengers</span>
+                            <input type="number" min={1} max={20} value={passengerCount || ""} onChange={(event) => { setPassengerCount(event.target.value === "" ? 0 : Number(event.target.value)); clearFieldError("passengerCount"); }} aria-invalid={Boolean(fieldErrors.passengerCount)} className="min-h-12 w-full min-w-0 rounded-xl border border-white/15 bg-white/[0.04] px-3 text-base text-white outline-none focus:border-emerald-300" />
+                            {fieldErrors.passengerCount && <span className="mt-1.5 block text-sm text-rose-300">{fieldErrors.passengerCount}</span>}
+                          </label>
+                        </div>
+                      </section>
 
-                  {/* Date, Time & Passenger Row */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-white/80 uppercase tracking-wider mb-2">
-                        Travel Date *
-                      </label>
-                      <input
-                        type="date"
-                        required
-                        value={travelDate}
-                        onChange={(e) => setTravelDate(e.target.value)}
-                        className="w-full bg-white/5 border border-white/15 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-cyan-400 transition-colors"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-white/80 uppercase tracking-wider mb-2">
-                        Pickup Time *
-                      </label>
-                      <input
-                        type="time"
-                        required
-                        value={pickupTime}
-                        onChange={(e) => setPickupTime(e.target.value)}
-                        className="w-full bg-white/5 border border-white/15 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-cyan-400 transition-colors"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-white/80 uppercase tracking-wider mb-2">
-                        Number of Passengers *
-                      </label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={20}
-                        required
-                        value={passengerCount}
-                        onChange={(e) => setPassengerCount(parseInt(e.target.value) || 1)}
-                        className="w-full bg-white/5 border border-white/15 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-cyan-400 transition-colors"
-                      />
-                    </div>
-                  </div>
+                      <section className="rounded-2xl border border-white/10 bg-[#111214] p-4 sm:p-6">
+                        <div className="mb-5">
+                          <p className="text-xs font-bold uppercase tracking-[0.15em] text-emerald-300">Step 3</p>
+                          <h3 className="mt-1 text-xl font-black text-white">Service &amp; contact details</h3>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {FAABCAB_SERVICES.map((service) => (
+                            <button key={service.id} type="button" aria-pressed={selectedService === service.title} onClick={() => { setSelectedService(service.title); clearFieldError("selectedService"); }} className={`flex min-h-20 items-start gap-3 rounded-xl border p-4 text-left transition ${selectedService === service.title ? "border-emerald-300 bg-emerald-300/10" : "border-white/10 bg-white/[0.03] hover:border-white/25"}`}>
+                              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white/[0.06] text-xl">{service.icon}</span>
+                              <span className="min-w-0">
+                                <span className="block text-sm font-bold text-white">{service.title}</span>
+                                <span className="mt-1 block text-xs leading-5 text-white/55">{service.description}</span>
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                        {fieldErrors.selectedService && <p className="mt-2 text-sm text-rose-300">{fieldErrors.selectedService}</p>}
 
-                  {/* Special Request */}
-                  <div>
-                    <label className="block text-xs font-bold text-white/80 uppercase tracking-wider mb-2">
-                      Special Request / Notes (Optional)
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={specialRequest}
-                      onChange={(e) => setSpecialRequest(e.target.value)}
-                      placeholder="e.g. Need AC sedan, extra luggage space, child seat..."
-                      className="w-full bg-white/5 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-cyan-400 transition-colors"
-                    />
-                  </div>
+                        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                          <label className="block min-w-0">
+                            <span className="mb-2 block text-sm font-semibold text-white/85">Your name</span>
+                            <input type="text" value={customerName} onChange={(event) => { setCustomerName(event.target.value); clearFieldError("customerName"); }} autoComplete="name" aria-invalid={Boolean(fieldErrors.customerName)} className="min-h-12 w-full rounded-xl border border-white/15 bg-white/[0.04] px-4 text-base text-white outline-none focus:border-emerald-300" />
+                            {fieldErrors.customerName && <span className="mt-1.5 block text-sm text-rose-300">{fieldErrors.customerName}</span>}
+                          </label>
+                          <label className="block min-w-0">
+                            <span className="mb-2 block text-sm font-semibold text-white/85">Phone number</span>
+                            <input type="tel" value={customerPhone} onChange={(event) => { setCustomerPhone(event.target.value); clearFieldError("customerPhone"); }} autoComplete="tel" aria-invalid={Boolean(fieldErrors.customerPhone)} className="min-h-12 w-full rounded-xl border border-white/15 bg-white/[0.04] px-4 text-base text-white outline-none focus:border-emerald-300" />
+                            {fieldErrors.customerPhone && <span className="mt-1.5 block text-sm text-rose-300">{fieldErrors.customerPhone}</span>}
+                          </label>
+                          <label className="block min-w-0 sm:col-span-2">
+                            <span className="mb-2 block text-sm font-semibold text-white/85">Email address</span>
+                            <input type="email" value={customerEmail} onChange={(event) => { setCustomerEmail(event.target.value); clearFieldError("customerEmail"); }} autoComplete="email" aria-invalid={Boolean(fieldErrors.customerEmail)} className="min-h-12 w-full rounded-xl border border-white/15 bg-white/[0.04] px-4 text-base text-white outline-none focus:border-emerald-300" />
+                            {fieldErrors.customerEmail && <span className="mt-1.5 block text-sm text-rose-300">{fieldErrors.customerEmail}</span>}
+                          </label>
+                          <label className="block min-w-0 sm:col-span-2">
+                            <span className="mb-2 block text-sm font-semibold text-white/85">Special request <span className="font-normal text-white/45">(optional)</span></span>
+                            <textarea rows={3} value={specialRequest} onChange={(event) => setSpecialRequest(event.target.value)} placeholder="Luggage space, accessibility needs or other notes" className="w-full resize-y rounded-xl border border-white/15 bg-white/[0.04] px-4 py-3 text-base text-white outline-none placeholder:text-white/35 focus:border-emerald-300" />
+                          </label>
+                        </div>
+                      </section>
 
-                  {/* Error Alert */}
-                  {error && (
-                    <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs font-semibold flex items-center gap-2">
-                      <span>⚠️</span>
-                      <span>{error}</span>
-                    </div>
+                      <button type="submit" className="min-h-14 w-full rounded-xl bg-emerald-400 px-5 text-base font-black text-zinc-950 transition hover:bg-emerald-300">
+                        Review Booking <span aria-hidden="true">→</span>
+                      </button>
+                    </form>
+                  ) : (
+                    <section className="rounded-2xl border border-white/10 bg-[#111214] p-4 sm:p-6">
+                      <p className="text-xs font-bold uppercase tracking-[0.15em] text-emerald-300">Review Booking</p>
+                      <h3 className="mt-1 text-xl font-black text-white">Check your journey details</h3>
+                      <dl className="mt-5 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+                        <div><dt className="text-xs text-white/50">Pickup → Drop</dt><dd className="mt-1 break-words text-sm font-semibold text-white">{pickupLocation} → {dropLocation}</dd></div>
+                        <div><dt className="text-xs text-white/50">Travel date</dt><dd className="mt-1 text-sm font-semibold text-white">{displayDate}</dd></div>
+                        <div><dt className="text-xs text-white/50">Pickup time</dt><dd className="mt-1 text-sm font-semibold text-white">{pickupTime}</dd></div>
+                        <div><dt className="text-xs text-white/50">Passengers</dt><dd className="mt-1 text-sm font-semibold text-white">{passengerCount}</dd></div>
+                        <div><dt className="text-xs text-white/50">Selected service</dt><dd className="mt-1 text-sm font-semibold text-white">{selectedService}</dd></div>
+                        <div><dt className="text-xs text-white/50">Customer</dt><dd className="mt-1 text-sm font-semibold text-white">{customerName}</dd></div>
+                        <div><dt className="text-xs text-white/50">Phone</dt><dd className="mt-1 text-sm font-semibold text-white">{customerPhone}</dd></div>
+                        <div><dt className="text-xs text-white/50">Email</dt><dd className="mt-1 break-all text-sm font-semibold text-white">{customerEmail}</dd></div>
+                        {specialRequest && <div className="sm:col-span-2"><dt className="text-xs text-white/50">Special request</dt><dd className="mt-1 text-sm font-semibold text-white">{specialRequest}</dd></div>}
+                      </dl>
+                      {error && <div role="alert" className="mt-5 rounded-xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm font-medium text-rose-200">{error}</div>}
+                      <button type="button" onClick={() => { setBookingStage("details"); setError(null); }} className="mt-6 min-h-12 w-full rounded-xl border border-white/15 px-4 text-sm font-bold text-white transition hover:bg-white/5">
+                        Edit details
+                      </button>
+                    </section>
                   )}
+                </div>
 
-                  {/* Submit Button */}
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="w-full py-4 rounded-2xl bg-gradient-to-r from-cyan-500 via-violet-600 to-pink-500 text-white font-bold text-base hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 transition-all shadow-[0_0_25px_rgba(6,182,212,0.35)] flex items-center justify-center gap-2"
-                  >
-                    {submitting ? (
-                      <>
-                        <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        <span>Confirming Transport Request...</span>
-                      </>
-                    ) : (
-                      <span>Confirm Transport Request ✓</span>
-                    )}
-                  </button>
-                </form>
+                <aside className="rounded-2xl border border-white/10 bg-[#111714] p-5 sm:p-6 lg:sticky lg:top-28">
+                  <p className="text-xs font-bold uppercase tracking-[0.15em] text-emerald-300">Booking Summary</p>
+                  <h3 className="mt-2 text-xl font-black text-white">Your journey</h3>
+                  <div className="mt-5 space-y-4 border-y border-white/10 py-5 text-sm">
+                    <div className="flex items-start gap-3"><MapPin size={17} className="mt-0.5 shrink-0 text-emerald-300" aria-hidden="true" /><div className="min-w-0"><span className="block text-xs text-white/50">Pickup → Drop</span><span className="mt-1 block break-words font-semibold text-white">{pickupLocation || "Pickup location"} → {dropLocation || "Drop location"}</span></div></div>
+                    <div className="flex items-start gap-3"><CalendarDays size={17} className="mt-0.5 shrink-0 text-emerald-300" aria-hidden="true" /><div><span className="block text-xs text-white/50">Travel date</span><span className="mt-1 block font-semibold text-white">{displayDate}</span></div></div>
+                    <div className="flex items-start gap-3"><Clock3 size={17} className="mt-0.5 shrink-0 text-emerald-300" aria-hidden="true" /><div><span className="block text-xs text-white/50">Pickup time</span><span className="mt-1 block font-semibold text-white">{pickupTime || "Choose a time"}</span></div></div>
+                    <div className="flex items-start gap-3"><UsersRound size={17} className="mt-0.5 shrink-0 text-emerald-300" aria-hidden="true" /><div><span className="block text-xs text-white/50">Passengers</span><span className="mt-1 block font-semibold text-white">{passengerCount || "Choose passenger count"}</span></div></div>
+                    <div><span className="block text-xs text-white/50">Selected service</span><span className="mt-1 block font-semibold text-white">{selectedService}</span></div>
+                    <div><span className="block text-xs text-white/50">Customer</span><span className="mt-1 block font-semibold text-white">{customerName || "Your name"}</span><span className="mt-1 block break-all text-xs text-white/60">{customerPhone || "Phone"} · {customerEmail || "Email"}</span></div>
+                  </div>
+                  <div className="mt-4 flex items-center justify-between gap-3">
+                    <span className="text-sm font-semibold text-white/70">Price</span>
+                    <span className="text-sm font-bold text-white">Price to be confirmed</span>
+                  </div>
+                  {bookingStage === "review" && (
+                    <button type="button" onClick={handleConfirmBooking} disabled={submitting} className="mt-6 min-h-14 w-full rounded-xl bg-emerald-400 px-4 text-base font-black text-zinc-950 transition hover:bg-emerald-300 disabled:cursor-wait disabled:opacity-70">
+                      {submitting ? "Creating your booking..." : "Confirm & Book"}
+                    </button>
+                  )}
+                </aside>
               </div>
             )}
           </div>

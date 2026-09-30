@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/client";
 
 export type UserRole = "client" | "provider";
 
@@ -27,15 +28,44 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let active = true;
+    const supabase = createClient();
+    let storedUser: UserSession | null = null;
     try {
       const stored = localStorage.getItem("evigo_user");
       if (stored) {
-        setUser(JSON.parse(stored));
+        storedUser = JSON.parse(stored) as UserSession;
       }
     } catch (e) {
       console.error("Failed to parse user session", e);
+      localStorage.removeItem("evigo_user");
     }
-    setLoading(false);
+
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (!active) return;
+      const sessionUser = data.session?.user;
+      if (error || !sessionUser || !storedUser || storedUser.id !== sessionUser.id) {
+        localStorage.removeItem("evigo_user");
+        setUser(null);
+      } else {
+        setUser({
+          ...storedUser,
+          id: sessionUser.id,
+          email: sessionUser.email || storedUser.email,
+        });
+      }
+      setLoading(false);
+    }).catch((error) => {
+      if (!active) return;
+      console.error("Failed to restore Supabase session", error);
+      localStorage.removeItem("evigo_user");
+      setUser(null);
+      setLoading(false);
+    });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const login = useCallback((u: UserSession) => {
@@ -44,6 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(() => {
+    void createClient().auth.signOut();
     localStorage.removeItem("evigo_user");
     setUser(null);
   }, []);

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase";
 import { SERVICE_CATEGORIES } from "@/lib/constants";
+import { getAuthenticatedUser } from "@/lib/server";
 
 export const runtime = "nodejs";
 
@@ -121,6 +122,7 @@ export async function POST(request: Request) {
             );
         }
 
+        const { user } = await getAuthenticatedUser();
         const payload: Record<string, any> = {
             owner_name: ownerName,
             business_name: businessName,
@@ -140,6 +142,10 @@ export async function POST(request: Request) {
             registration_status: "pending",
             submitted_at: new Date().toISOString(),
         };
+
+        if (user?.id) {
+            payload.user_id = user.id;
+        }
 
         const { data, error } = await supabase
             .from("providers")

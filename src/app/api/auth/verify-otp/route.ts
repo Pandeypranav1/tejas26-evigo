@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase";
 
 export async function POST(request: Request) {
   try {
@@ -36,10 +37,25 @@ export async function POST(request: Request) {
       type: "email",
     });
 
+    // Diagnostic logging (Never log OTP code or secrets)
+    console.log("[verify-otp] Diagnostic log:", {
+      stage: "otp_verification",
+      emailDomain: normalizedEmail.split("@")[1] || "unknown",
+      success: !error && !!data?.user,
+      errorCode: (error as any)?.code || (error as any)?.status || null,
+      errorMessage: error?.message || null,
+    });
+
     if (error) {
-      console.error("[verify-otp] Supabase error:", error);
+      const msg = error.message?.toLowerCase() || "";
+      let userMsg = error.message || "Invalid or expired OTP";
+      if (msg.includes("expired")) {
+        userMsg = "The OTP has expired. Please request a new code.";
+      } else if (msg.includes("invalid")) {
+        userMsg = "Incorrect OTP code. Please verify and try again.";
+      }
       return NextResponse.json(
-        { error: error.message || "Invalid OTP" },
+        { error: userMsg },
         { status: 400 }
       );
     }
@@ -51,6 +67,27 @@ export async function POST(request: Request) {
       );
     }
 
+    // Ensure profile row exists in public.profiles for first-time user
+    try {
+      const adminSupabase = createAdminClient();
+      const { data: existingProfile } = await adminSupabase
+        .from("profiles")
+        .select("id")
+        .eq("id", data.user.id)
+        .maybeSingle();
+
+      if (!existingProfile) {
+        await adminSupabase.from("profiles").upsert({
+          id: data.user.id,
+          email: normalizedEmail,
+          role: effectiveRole,
+          full_name: data.user.user_metadata?.full_name || normalizedEmail.split("@")[0],
+        });
+      }
+    } catch (profErr) {
+      console.warn("[verify-otp] Profile setup warning:", profErr);
+    }
+
     return NextResponse.json({
       success: true,
       user: {
@@ -59,7 +96,7 @@ export async function POST(request: Request) {
         role: effectiveRole,
         createdAt: data.user.created_at || new Date().toISOString(),
       },
-      // Return session so client can establish it if needed
+      // Return session so client can establish it
       session: data.session
         ? {
             access_token: data.session.access_token,
@@ -70,7 +107,7 @@ export async function POST(request: Request) {
   } catch (err: any) {
     console.error("[verify-otp] Unexpected error:", err);
     return NextResponse.json(
-      { error: "Failed to verify OTP" },
+      { error: "Failed to verify OTP due to a server error." },
       { status: 500 }
     );
   }

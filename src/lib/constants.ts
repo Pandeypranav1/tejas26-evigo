@@ -481,6 +481,14 @@ export interface TourismPlace {
   district: string;
   category: string;
   description: string;
+  overview: string;
+  historicalBackground: string;
+  significance: string;
+  location: string;
+  howToReach: string;
+  timings?: string;
+  entryFee?: string;
+  historySources: { label: string; url: string }[];
   image?: string;
   lat?: number;
   lng?: number;
@@ -498,13 +506,29 @@ export const TOURISM_DISTRICTS = [
   { id: "Darbhanga", name: "Darbhanga", available: false, count: 0, tagline: "Royal Palaces & Mithila Culture" },
 ] as const;
 
+export const BIHAR_DESTINATIONS = [
+  { name: "Patna", tag: "Ganges Ghats", img: "/patna_ganges.png", district: "Patna" },
+  { name: "Gaya", tag: "Buddhist Circuit", img: "/gaya_buddhist.png", district: "Gaya" },
+  { name: "Rajgir", tag: "Hot Springs & Hills", img: "/rajgir_hills.png", district: "Rajgir" },
+  { name: "Vaishali", tag: "Ancient Ruins", img: "/vaishali_ruins.png", district: "Vaishali" },
+  { name: "Jamui", tag: "Wildlife & Nature", img: "/jamui_nature.png", district: "Jamui" },
+] as const;
+
 export const TOURISM_PLACES: TourismPlace[] = [
   {
     id: "simultala-hill-station",
     name: "Simultala Hill Station",
     district: "Jamui",
     category: "Nature / Hill station",
-    description: "Scenic hill station known for pleasant climate, greenery, and as a meditation site (Tapobhumi) linked to Sri Ramakrishna Paramahamsa",
+    description: "Scenic hills and pleasant weather; local tradition regards it as a Tapobhumi associated with Sri Ramakrishna Paramhans.",
+    overview: "The Jamui District Administration describes Simultala for its scenic hills and pleasant weather.",
+    historicalBackground: "No construction date or documented historical chronology was provided in the official sources reviewed. The District Administration says Simultala is supposed to be a Tapobhumi associated with Sri Ramakrishna Paramhans; this is an attributed tradition, not established here as a proven historical event.",
+    significance: "A hill and nature destination. Its association with Sri Ramakrishna is described by the District Administration as a supposition/tradition.",
+    location: "Simultala, Jamui district. The existing Evigo map coordinates are retained.",
+    howToReach: "The official district source reviewed does not publish a transport route or distance. Use the existing map directions for navigation.",
+    historySources: [
+      { label: "Jamui District Administration — Places of Interest", url: "https://jamui.nic.in/places-of-interest/" },
+    ],
     image: "/tourism/jamui/simultala.png",
     // Verified: Simultala Railway Station area, Jamui district
     lat: 24.71407,
@@ -516,7 +540,16 @@ export const TOURISM_PLACES: TourismPlace[] = [
     name: "Kshatriya Kund Gram",
     district: "Jamui",
     category: "Religious / Jain pilgrimage",
-    description: "Traditionally regarded as the birthplace of Lord Mahavira — major Jain pilgrimage site nestled in lush green valley",
+    description: "A Jain pilgrimage destination that Jain tradition reveres as Lord Mahavira's birthplace.",
+    overview: "Kshatriya Kund Gram is a Jain pilgrimage destination associated with Lord Mahavira.",
+    historicalBackground: "According to Jain tradition, Kshatriya Kund Gram is revered as the birthplace of Lord Mahavira. Bihar Tourism describes Lachhuar as the gateway to the place believed to be his birthplace. This is a religious tradition; the sources reviewed do not provide archaeological evidence or an independently verified date.",
+    significance: "A Jain pilgrimage site. Its birthplace association is presented by the sources as a belief/tradition, not as independently established history.",
+    location: "Kshatriya Kund Gram, Jamui district. Bihar Tourism places the Lachhuar gateway in Sikandra block, about 20 km west of Jamui headquarters.",
+    howToReach: "Bihar Tourism describes Lachhuar as the gateway to Kund and says regular treks are organized from the temple. It lists auto-rickshaws and local buses from Jamui town to Lachhuar; check locally for current onward access.",
+    historySources: [
+      { label: "Bihar Tourism — Lachhuar Jain Temple", url: "https://tourism.bihar.gov.in/en/destinations/jamui/jain-temple-lachuar" },
+      { label: "Jamui District Administration — Places of Interest", url: "https://jamui.nic.in/places-of-interest/" },
+    ],
     image: "/tourism/jamui/kund_gram.png",
     // Verified: ~20km west of Jamui HQ, near Lachhuar in Sikandra block
     // Source: Bihar govt records — 24°55'N, 85°50'E
@@ -529,9 +562,19 @@ export const TOURISM_PLACES: TourismPlace[] = [
     name: "Lachhuar Jain Mandir",
     district: "Jamui",
     category: "Religious / Jain temple",
-    description: "Large Jain temple and dharamshala, key pilgrim stop near Kshatriya Kund Gram offering peaceful spiritual retreats",
+    description: "Large Jain temple and dharamshala serving pilgrims near Kshatriya Kund Gram.",
+    overview: "The Jain temple and dharamshala at Lachhuar serve pilgrims and are described by Bihar Tourism as the gateway to Kshatriya Kund Gram.",
+    historicalBackground: "Bihar Tourism states that the temple and dharamshala were built in 1874 and describes a 65-room pilgrims' rest house. The same page reports a claim that the black-stone Mahavira idol is more than 2,600 years old; the source does not provide dating evidence, so that age is presented only as a source-attributed claim.",
+    significance: "A Jain place of worship and pilgrim rest house dedicated to Lord Mahavira and other Tirthankaras. Its role as a gateway to Kshatriya Kund is noted by Bihar Tourism.",
+    location: "Lachuar, Jamui, Bihar 811307. Bihar Tourism places it in Sikandra block, approximately 20 km west of Jamui headquarters.",
+    howToReach: "Bihar Tourism lists auto-rickshaws and local buses from Jamui town, and says the temple organizes regular treks to Kund.",
+    timings: "5:00 AM–9:00 PM (Bihar Tourism). Confirm locally before travel.",
+    entryFee: "Free (Bihar Tourism). Confirm locally before travel.",
+    historySources: [
+      { label: "Bihar Tourism — Lachhuar Jain Temple", url: "https://tourism.bihar.gov.in/en/destinations/jamui/jain-temple-lachuar" },
+      { label: "Jamui District Administration — Places of Interest", url: "https://jamui.nic.in/places-of-interest/" },
+    ],
     image: "/tourism/jamui/lachhuar.png",
-    // Verified: Wikipedia coords — 24° 54′ 52.34″ N, 86° 0′ 52″ E
     lat: 24.9145,
     lng: 86.0144,
     featured: true,
@@ -541,9 +584,17 @@ export const TOURISM_PLACES: TourismPlace[] = [
     name: "Kali Mandir, Malaypur",
     district: "Jamui",
     category: "Religious / Temple",
-    description: "Temple of Goddess Kali near Jamui Railway Station, known for its grand annual festival and spiritual devotion",
+    description: "Temple of Goddess Kali in Malaypur, near Jamui Railway Station; the District Administration notes an annual Kali Mela.",
+    overview: "The District Administration identifies this as a temple of Goddess Kali in Malaypur, near Jamui Railway Station.",
+    historicalBackground: "The official sources reviewed do not give a construction date or historical chronology. The District Administration records an annual Kali Mela; this is a continuing local religious tradition.",
+    significance: "A Hindu place of worship dedicated to Goddess Kali and the venue of the locally noted annual Kali Mela.",
+    location: "Malaypur village, Barhat block, near Jamui Railway Station, Jamui district.",
+    howToReach: "The District Administration says the temple is beside Jamui Railway Station. No separate route, hours, or entry fee were published in the sources reviewed.",
+    historySources: [
+      { label: "Jamui District Administration — Kali Mandir Malaypur", url: "https://jamui.nic.in/tourist-place/kali-mandir/" },
+      { label: "Jamui District Administration — Places of Interest", url: "https://jamui.nic.in/places-of-interest/" },
+    ],
     image: "/tourism/jamui/kali_mandir.png",
-    // Verified: Malaypur area near Jamui town; will use name search fallback for accuracy
     lat: 24.9265,
     lng: 86.2241,
   },
@@ -552,9 +603,17 @@ export const TOURISM_PLACES: TourismPlace[] = [
     name: "Minto Tower (Gidhaur)",
     district: "Jamui",
     category: "Historical / Monument",
-    description: "Colonial-era tower built by the Maharaja of Gidhaur in 1909 to commemorate Lord Minto's visit, marking the centre of Gidhaur town",
+    description: "A Gidhaur market landmark; official district accounts date construction to 1909 but conflict with Evigo's existing account of the commemorated viceroy.",
+    overview: "Minto Tower is a landmark in Gidhaur Market on the Jamui–Jhajha state highway, according to the Jamui District Administration.",
+    historicalBackground: "The District Administration states the tower was built by the Maharaja of Gidhaur in 1909. Its official pages say it commemorated a visit by Viceroy Lord Irwin, while the existing Evigo description names Lord Minto. Because these accounts conflict and the source's 1909/Viceroy attribution needs archival confirmation, the visitor/dedication is not presented here as settled fact.",
+    significance: "A Gidhaur town landmark associated in the District Administration's account with the area's princely-era and colonial-period history.",
+    location: "Gidhaur Market, on the main Jamui–Jhajha state highway, Jamui district.",
+    howToReach: "The District Administration locates it in the middle of Gidhaur Market on the Jamui–Jhajha highway. Official sources reviewed do not publish visiting hours or an entry fee.",
+    historySources: [
+      { label: "Jamui District Administration — Minto Tower", url: "https://jamui.nic.in/tourist-place/khandagir-udayagiri-6/" },
+      { label: "Jamui District Administration — Places of Interest", url: "https://jamui.nic.in/places-of-interest/" },
+    ],
     image: "/tourism/jamui/minto_tower.png",
-    // Verified: Gidhaur (Patsanda) town centre — Wikipedia: 24°51′29″N 86°18′01″E
     lat: 24.8581,
     lng: 86.3003,
     featured: true,
@@ -564,9 +623,16 @@ export const TOURISM_PLACES: TourismPlace[] = [
     name: "Giddheshwar/Gidheshwar Mandir",
     district: "Jamui",
     category: "Religious / Shiva temple",
-    description: "Ancient Shiva temple in Gidhaur situated amidst picturesque rocky hills, near Minto Tower",
+    description: "A Shiva temple on rocky boulders, about 15 km south of Jamui headquarters according to the District Administration.",
+    overview: "The District Administration describes Giddheswar as a temple of Lord Shiva on top of stone boulders.",
+    historicalBackground: "The official source reviewed does not provide a founding date, historical chronology, or associated documented event. No legend is presented as historical fact.",
+    significance: "A Hindu Shaiva place of worship, located on a rocky outcrop according to the District Administration.",
+    location: "About 15 km south of Jamui district headquarters, as listed by the District Administration.",
+    howToReach: "The District Administration gives the approximate distance from headquarters but no transport instructions. Use the existing map directions for navigation; official hours and entry fee were not found.",
+    historySources: [
+      { label: "Jamui District Administration — Places of Interest", url: "https://jamui.nic.in/places-of-interest/" },
+    ],
     image: "/tourism/jamui/giddheshwar.png",
-    // Verified: Kasbagidhaur/Harni area, Gidhaur — Plus Code R58H+2RM area
     lat: 24.8579,
     lng: 86.3004,
   },
@@ -575,9 +641,16 @@ export const TOURISM_PLACES: TourismPlace[] = [
     name: "Patneshwar Mandir",
     district: "Jamui",
     category: "Religious / Temple",
-    description: "Medieval-era Shiva temple known for its ancient stone architecture and religious reverence, situated atop Patneshwar Hill near the Kiul River",
+    description: "A Shiva temple on Station Road, about 5 km north of Jamui headquarters according to the District Administration.",
+    overview: "The District Administration lists Patneswar Mandir as a temple of Lord Shiva on Station Road, Jamui.",
+    historicalBackground: "The official source reviewed provides no construction date, medieval-period attribution, architectural dating, or historical event. Evigo's previous description included those claims, but they are not corroborated by the official source reviewed and are not repeated here as established facts.",
+    significance: "A local Hindu place of worship dedicated to Lord Shiva, as described by the District Administration.",
+    location: "On Station Road, about 5 km north of Jamui headquarters, according to the District Administration.",
+    howToReach: "The District Administration gives the Station Road location and approximate distance. Official transport instructions, timings, and entry fee were not found.",
+    historySources: [
+      { label: "Jamui District Administration — Places of Interest", url: "https://jamui.nic.in/places-of-interest/" },
+    ],
     image: "/tourism/jamui/patneshwar.png",
-    // Verified: Mallehpur (Malaypur), Jamui — temple on hill near Kiul River
     lat: 24.9208,
     lng: 86.1754,
   },
@@ -586,9 +659,16 @@ export const TOURISM_PLACES: TourismPlace[] = [
     name: "Nagi Dam / Bhimbandh Wildlife Sanctuary",
     district: "Jamui",
     category: "Nature / Wildlife",
-    description: "Renowned bird sanctuary and reservoir area surrounded by dense forests, popular for birdwatching and eco-tourism",
+    description: "The existing Evigo record combines Nagi Dam and Bhim Bandh; official district details reviewed cover Bhim Bandh's hot-water springs, not Nagi Dam history.",
+    overview: "This existing Evigo record combines Nagi Dam and Bhim Bandh. The District Administration source reviewed describes Bhim Bandh's hot-water springs and winter picnic use, but does not document Nagi Dam or establish that the two are one site.",
+    historicalBackground: "No historical chronology for Nagi Dam or Bhim Bandh was supplied by the official sources reviewed. The District Administration describes Bhim Bandh as a winter picnic spot; no origin date or associated event is stated.",
+    significance: "The Jamui District Administration notes hot-water springs at Bhim Bandh. The current Evigo record also names Nagi Dam, but historical or ecological claims specific to Nagi Dam require a source not located in this review.",
+    location: "The District Administration places Bhim Bandh between the Lakshmipur and Haveli Kharagpur forest area. The existing Evigo map coordinates are retained for the Nagi Dam pin; the sources reviewed do not establish that these names identify one location.",
+    howToReach: "The official district source reviewed does not publish a route or transport guidance. Confirm the intended destination locally before travelling because this existing record combines two place names.",
+    historySources: [
+      { label: "Jamui District Administration — Places of Interest (Bhim Bandh)", url: "https://jamui.nic.in/places-of-interest/" },
+    ],
     image: "/tourism/jamui/nagi_dam.png",
-    // Verified: Nagi Dam Bird Sanctuary — Wikipedia: 24°49′03″N 86°24′00″E
     lat: 24.8175,
     lng: 86.4000,
     featured: true,

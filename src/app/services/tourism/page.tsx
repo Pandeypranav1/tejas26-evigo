@@ -54,21 +54,127 @@ function getCategoryBadge(category: string) {
   };
 }
 
+function getPlaceMapUrl(place: TourismPlace) {
+  return place.lat !== undefined && place.lng !== undefined && !isNaN(place.lat) && !isNaN(place.lng)
+    ? `https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}`
+    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+      `${place.name}, ${place.district}, Bihar`
+    )}`;
+}
+
+function PlaceDetailsModal({ place, onClose }: { place: TourismPlace; onClose: () => void }) {
+  const mapUrl = getPlaceMapUrl(place);
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/75 p-3 backdrop-blur-sm sm:p-6"
+      onClick={(event) => event.target === event.currentTarget && onClose()}
+    >
+      <article
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="tourism-place-title"
+        className="relative max-h-[92dvh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-white/15 bg-[#0f0a1e] text-white shadow-2xl"
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close place details"
+          className="absolute right-3 top-3 z-10 grid h-10 w-10 place-items-center rounded-full border border-white/20 bg-black/65 text-xl text-white hover:bg-black"
+        >
+          ×
+        </button>
+        <div className="relative aspect-[16/8] bg-zinc-900">
+          {place.image && (
+            <Image src={place.image} alt={place.name} fill sizes="(max-width: 768px) 100vw, 768px" className="object-cover" />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-[#0f0a1e] via-[#0f0a1e]/20 to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 p-5 sm:p-7">
+            <p className="text-xs font-bold uppercase tracking-wider text-cyan-300">{place.district}, Bihar</p>
+            <h2 id="tourism-place-title" className="mt-1 max-w-2xl text-2xl font-black sm:text-3xl">{place.name}</h2>
+          </div>
+        </div>
+
+        <div className="space-y-6 p-5 sm:p-7">
+          <section>
+            <h3 className="text-sm font-black uppercase tracking-wider text-cyan-300">About</h3>
+            <p className="mt-2 text-sm leading-6 text-white/80">{place.overview}</p>
+          </section>
+          <section>
+            <h3 className="text-sm font-black uppercase tracking-wider text-cyan-300">History / Background</h3>
+            <p className="mt-2 text-sm leading-6 text-white/80">{place.historicalBackground}</p>
+          </section>
+          <section>
+            <h3 className="text-sm font-black uppercase tracking-wider text-cyan-300">Significance</h3>
+            <p className="mt-2 text-sm leading-6 text-white/80">{place.significance}</p>
+          </section>
+          <section>
+            <h3 className="text-sm font-black uppercase tracking-wider text-cyan-300">Travel Information</h3>
+            <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:col-span-2">
+                <dt className="text-xs font-bold text-white/50">Location</dt>
+                <dd className="mt-1 text-sm leading-5 text-white/85">{place.location}</dd>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 sm:col-span-2">
+                <dt className="text-xs font-bold text-white/50">How to reach</dt>
+                <dd className="mt-1 text-sm leading-5 text-white/85">{place.howToReach}</dd>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                <dt className="text-xs font-bold text-white/50">Timings</dt>
+                <dd className="mt-1 text-sm text-white/85">{place.timings || "Not published in the official sources reviewed."}</dd>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                <dt className="text-xs font-bold text-white/50">Entry fee</dt>
+                <dd className="mt-1 text-sm text-white/85">{place.entryFee || "Not published in the official sources reviewed."}</dd>
+              </div>
+            </dl>
+          </section>
+          <section>
+            <h3 className="text-sm font-black uppercase tracking-wider text-cyan-300">Sources</h3>
+            <ul className="mt-2 space-y-2">
+              {place.historySources.map((source) => (
+                <li key={source.url}>
+                  <a href={source.url} target="_blank" rel="noreferrer" className="text-sm font-semibold text-cyan-200 underline decoration-cyan-200/40 underline-offset-4 hover:text-white">
+                    {source.label} ↗
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+          <a href={mapUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center rounded-xl bg-cyan-500/15 px-4 text-sm font-bold text-cyan-100 hover:bg-cyan-500/25">
+            View on Map ↗
+          </a>
+        </div>
+      </article>
+    </div>
+  );
+}
+
 // Tourism Place Card without the Plan Visit button
 function PlaceCard({
   place,
+  onOpenDetails,
 }: {
   place: TourismPlace;
+  onOpenDetails: (place: TourismPlace) => void;
 }) {
   const catStyle = getCategoryBadge(place.category);
   const [saved, setSaved] = useState(false);
-
-  const mapUrl =
-    place.lat !== undefined && place.lng !== undefined && !isNaN(place.lat) && !isNaN(place.lng)
-      ? `https://www.google.com/maps/dir/?api=1&destination=${place.lat},${place.lng}`
-      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-        `${place.name}, ${place.district}, Bihar`
-      )}`;
+  const mapUrl = getPlaceMapUrl(place);
 
   return (
     <div className="group bg-[#0f0a1e] border border-white/10 rounded-3xl overflow-hidden flex flex-col shadow-[0_8px_30px_rgba(0,0,0,0.5)] transition-all duration-300 hover:border-cyan-500/50 hover:shadow-[0_12px_40px_rgba(6,182,212,0.15)] hover:-translate-y-1">
@@ -149,7 +255,14 @@ function PlaceCard({
         </p>
 
         {/* Action Row: Map link */}
-        <div className="pt-4 border-t border-white/10 flex items-center justify-end gap-3 mt-auto">
+        <div className="pt-4 border-t border-white/10 flex items-center justify-between gap-3 mt-auto">
+          <button
+            type="button"
+            onClick={() => onOpenDetails(place)}
+            className="inline-flex min-h-10 items-center rounded-xl border border-cyan-400/30 bg-cyan-400/10 px-3 text-xs font-bold text-cyan-100 hover:bg-cyan-400/20"
+          >
+            Place Details
+          </button>
           <a
             href={mapUrl}
             target="_blank"
@@ -172,6 +285,14 @@ export default function TourismPage() {
   const [selectedDistrict, setSelectedDistrict] = useState<string>("Jamui");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [showMap, setShowMap] = useState<boolean>(true);
+  const [selectedPlace, setSelectedPlace] = useState<TourismPlace | null>(null);
+
+  useEffect(() => {
+    const requestedDistrict = new URLSearchParams(window.location.search).get("district");
+    if (requestedDistrict && TOURISM_DISTRICTS.some((district) => district.id === requestedDistrict)) {
+      setSelectedDistrict(requestedDistrict);
+    }
+  }, []);
 
   const currentDistrictInfo = TOURISM_DISTRICTS.find((d) => d.id === selectedDistrict);
 
@@ -212,13 +333,13 @@ export default function TourismPage() {
         <Container>
           <div className="relative z-10 max-w-3xl">
             <Link
-              href="/services"
+              href="/travel-tourism"
               className="inline-flex items-center gap-1.5 text-sm font-bold text-cyan-400 hover:text-cyan-300 mb-6 transition-colors"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
-              Back to Services
+              Back to Travel & Tourism
             </Link>
 
             <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -374,6 +495,7 @@ export default function TourismPage() {
                     <PlaceCard
                       key={place.id}
                       place={place}
+                      onOpenDetails={setSelectedPlace}
                     />
                   ))}
                 </div>
@@ -458,6 +580,9 @@ export default function TourismPage() {
 
         </Container>
       </section>
+      {selectedPlace && (
+        <PlaceDetailsModal place={selectedPlace} onClose={() => setSelectedPlace(null)} />
+      )}
     </div>
   );
 }
