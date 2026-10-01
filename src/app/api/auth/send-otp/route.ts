@@ -90,7 +90,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: `OTP sent to ${normalizedEmail}. Check your inbox or Spam/Promotions folder.`,
+      message: `OTP request accepted for ${normalizedEmail}. Check your inbox, Spam, or Promotions.`,
     });
   } catch (err: any) {
     console.error("[send-otp] Unexpected error:", err);
