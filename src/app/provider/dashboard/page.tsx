@@ -18,6 +18,7 @@ export default function ProviderDashboard() {
 
   const [bookings, setBookings] = useState<any[]>([]);
   const [services, setServices] = useState<any[]>([]);
+  const [comboItems, setComboItems] = useState<any[]>([]);
   const [profile, setProfile] = useState<any | null>(null);
   const [providerRecord, setProviderRecord] = useState<any | null>(null);
   const [loadingData, setLoadingData] = useState(true);
@@ -25,6 +26,8 @@ export default function ProviderDashboard() {
 
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [selectedRejectBooking, setSelectedRejectBooking] = useState<any | null>(null);
+  const [selectedRejectComboItem, setSelectedRejectComboItem] = useState<any | null>(null);
+  const [comboRejectReason, setComboRejectReason] = useState("");
   const [togglingService, setTogglingService] = useState<string | null>(null);
   const [expandedRouteBookingId, setExpandedRouteBookingId] = useState<string | null>(null);
   const [newBookingNotice, setNewBookingNotice] = useState<NotificationItem | null>(null);
@@ -61,14 +64,21 @@ export default function ProviderDashboard() {
         setServices(servicesData.services);
       }
 
-      // 3. Fetch user profile
+      // 3. Fetch provider combo items
+      const comboRes = await fetch(`/api/combo-packs/bookings?role=provider&user_id=${encodeURIComponent(userId)}`);
+      const comboData = await comboRes.json();
+      if (comboData.success && Array.isArray(comboData.items)) {
+        setComboItems(comboData.items);
+      }
+
+      // 4. Fetch user profile
       const profileRes = await fetch(`/api/profile?user_id=${encodeURIComponent(userId)}`);
       const profileData = await profileRes.json();
       if (profileData.success && profileData.profile) {
         setProfile(profileData.profile);
       }
 
-      // 4. Fetch provider record
+      // 5. Fetch provider record
       const providerRes = await fetch(`/api/providers?user_id=${encodeURIComponent(userId)}`);
       const providerData = await providerRes.json();
       if (providerData.success && Array.isArray(providerData.providers) && providerData.providers.length > 0) {
@@ -279,6 +289,89 @@ export default function ProviderDashboard() {
       setBookings((prev) => prev.map((item) => item.id === booking.id ? { ...item, ...data.booking } : item));
     } catch (err: any) {
       alert(`Error completing booking: ${err.message}`);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  // ── Combo Pack Item Handlers ──
+  const handleAcceptComboItem = async (itemId: string) => {
+    setActionInProgress(itemId);
+    try {
+      const res = await fetch("/api/combo-packs/bookings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item_id: itemId, action: "accept" }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || "Failed to accept combo item");
+
+      setComboItems((prev) =>
+        prev.map((it) => (it.id === itemId ? { ...it, provider_booking_status: "confirmed" } : it))
+      );
+    } catch (err: any) {
+      alert(`Error accepting combo item: ${err.message}`);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleRejectComboItem = async () => {
+    if (!selectedRejectComboItem || !comboRejectReason.trim()) {
+      alert("Please provide a rejection reason");
+      return;
+    }
+    const itemId = selectedRejectComboItem.id;
+    setActionInProgress(itemId);
+    try {
+      const res = await fetch("/api/combo-packs/bookings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          item_id: itemId,
+          action: "reject",
+          rejection_reason: comboRejectReason.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || "Failed to reject combo item");
+
+      setComboItems((prev) =>
+        prev.map((it) =>
+          it.id === itemId
+            ? { ...it, provider_booking_status: "rejected", rejection_reason: comboRejectReason.trim() }
+            : it
+        )
+      );
+      setSelectedRejectComboItem(null);
+      setComboRejectReason("");
+    } catch (err: any) {
+      alert(`Error rejecting combo item: ${err.message}`);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleCompleteComboItem = async (itemId: string) => {
+    setActionInProgress(itemId);
+    try {
+      const res = await fetch("/api/combo-packs/bookings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ item_id: itemId, action: "complete" }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || "Failed to mark combo item complete");
+
+      setComboItems((prev) =>
+        prev.map((it) =>
+          it.id === itemId
+            ? { ...it, provider_booking_status: "completed", service_status: "completed" }
+            : it
+        )
+      );
+    } catch (err: any) {
+      alert(`Error completing combo item: ${err.message}`);
     } finally {
       setActionInProgress(null);
     }
@@ -580,6 +673,147 @@ export default function ProviderDashboard() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Combo Package Requests Section */}
+        {comboItems.length > 0 && (
+          <div className="mt-10">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-xl font-black text-zinc-900 flex items-center gap-2">
+                  <span>🎁</span> Assigned Combo Package Requests ({comboItems.length})
+                </h2>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Package bundles containing services assigned to your provider account.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2">
+              {comboItems.map((ci) => {
+                const itemStatus = (ci.provider_booking_status || "pending").toLowerCase();
+                const parentBooking = ci.combo_booking || {};
+                const isPending = itemStatus === "pending";
+                const isConfirmed = itemStatus === "confirmed";
+                const isCompleted = itemStatus === "completed";
+                const isRejected = itemStatus === "rejected";
+                const isCancelled = itemStatus === "cancelled";
+
+                return (
+                  <div
+                    key={ci.id}
+                    className="rounded-2xl border border-cyan-200/80 bg-gradient-to-br from-white via-cyan-50/10 to-violet-50/10 p-5 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-cyan-100 text-cyan-800 border border-cyan-200">
+                          <span>🎁</span> {ci.service_type}
+                        </span>
+                        <span
+                          className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full uppercase ${
+                            isConfirmed
+                              ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
+                              : isCompleted
+                              ? "bg-violet-100 text-violet-800 border border-violet-200"
+                              : isRejected
+                              ? "bg-red-100 text-red-800 border border-red-200"
+                              : isCancelled
+                              ? "bg-slate-200 text-slate-700 border border-slate-300"
+                              : "bg-amber-100 text-amber-800 border border-amber-200"
+                          }`}
+                        >
+                          {itemStatus}
+                        </span>
+                      </div>
+
+                      <div className="text-base font-black text-zinc-900 mb-1">
+                        {parentBooking.combo_name || "Evigo Combo Package"}
+                      </div>
+
+                      <div className="mt-3 grid gap-2 text-xs font-semibold text-zinc-600 sm:grid-cols-2 bg-zinc-50 p-3 rounded-xl border border-zinc-100 mb-3">
+                        <div>
+                          <span className="text-[10px] text-zinc-400 block uppercase">Customer</span>
+                          <span className="text-zinc-900 font-bold">{parentBooking.customer_name || "Customer"}</span>
+                          {parentBooking.customer_phone && (
+                            <span className="text-zinc-500 block text-[11px]">{parentBooking.customer_phone}</span>
+                          )}
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-zinc-400 block uppercase">Travel Date</span>
+                          <span className="text-zinc-900">{parentBooking.start_date || parentBooking.booking_date || "Scheduled"}</span>
+                        </div>
+                        {parentBooking.pickup_location && (
+                          <div className="sm:col-span-2">
+                            <span className="text-[10px] text-cyan-700 block uppercase">Pickup Location</span>
+                            <span className="text-zinc-900">{parentBooking.pickup_location}</span>
+                          </div>
+                        )}
+                        {parentBooking.drop_location && (
+                          <div className="sm:col-span-2">
+                            <span className="text-[10px] text-violet-700 block uppercase">Drop Destination</span>
+                            <span className="text-zinc-900">{parentBooking.drop_location}</span>
+                          </div>
+                        )}
+                        <div>
+                          <span className="text-[10px] text-zinc-400 block uppercase">Item Allocated Rate</span>
+                          <span className="text-emerald-700 font-bold">₹{Number(ci.price_snapshot || 0).toLocaleString("en-IN")}</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-zinc-400 block uppercase">Guests</span>
+                          <span className="text-zinc-900">{parentBooking.guest_count || 1} Person(s)</span>
+                        </div>
+                      </div>
+
+                      {isRejected && ci.rejection_reason && (
+                        <div className="mb-3 rounded-xl bg-red-50 p-2.5 text-xs text-red-700 border border-red-200">
+                          <strong>Reason:</strong> {ci.rejection_reason}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Action Row */}
+                    <div className="pt-3 border-t border-zinc-100 flex flex-wrap items-center justify-end gap-2">
+                      {isPending && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={actionInProgress === ci.id}
+                            onClick={() => setSelectedRejectComboItem(ci)}
+                            className="rounded-xl border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-700 hover:bg-red-100 transition-colors disabled:opacity-50"
+                          >
+                            Decline
+                          </button>
+                          <button
+                            type="button"
+                            disabled={actionInProgress === ci.id}
+                            onClick={() => handleAcceptComboItem(ci.id)}
+                            className="rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 px-4 py-1.5 text-xs font-bold text-white shadow-md shadow-cyan-500/20 hover:brightness-110 transition-all disabled:opacity-50 flex items-center gap-1.5"
+                          >
+                            {actionInProgress === ci.id ? (
+                              <span className="h-3 w-3 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                            ) : (
+                              <span>✓ Accept Request</span>
+                            )}
+                          </button>
+                        </>
+                      )}
+
+                      {isConfirmed && (
+                        <button
+                          type="button"
+                          disabled={actionInProgress === ci.id}
+                          onClick={() => handleCompleteComboItem(ci.id)}
+                          className="rounded-xl bg-emerald-600 px-4 py-1.5 text-xs font-bold text-white shadow-md hover:bg-emerald-700 transition-all disabled:opacity-50"
+                        >
+                          {actionInProgress === ci.id ? "Updating..." : "✅ Mark Completed"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -1037,6 +1271,57 @@ export default function ProviderDashboard() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reject Combo Item Modal */}
+      {selectedRejectComboItem && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl border border-zinc-100">
+            <div className="flex items-center gap-3 text-red-600 mb-3">
+              <span className="text-2xl">⚠️</span>
+              <h3 className="text-lg font-black text-zinc-900">Decline Combo Service</h3>
+            </div>
+
+            <p className="text-xs text-zinc-600 leading-relaxed mb-4">
+              Please specify the reason for declining this <strong>{selectedRejectComboItem.service_type}</strong> request in package &quot;{selectedRejectComboItem.combo_booking?.combo_name}&quot;. The customer will be informed immediately.
+            </p>
+
+            <div className="mb-4">
+              <label className="block text-[11px] font-bold text-zinc-700 uppercase mb-1">
+                Reason for Declining *
+              </label>
+              <textarea
+                rows={3}
+                required
+                value={comboRejectReason}
+                onChange={(e) => setComboRejectReason(e.target.value)}
+                placeholder="e.g. Fully booked on this date / Vehicles under scheduled maintenance / Service capacity reached"
+                className="w-full rounded-2xl border border-zinc-300 p-3 text-xs text-zinc-900 font-medium outline-none focus:border-red-500 focus:ring-2 focus:ring-red-100 resize-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedRejectComboItem(null);
+                  setComboRejectReason("");
+                }}
+                className="px-4 py-2 rounded-xl border border-zinc-200 text-zinc-600 hover:bg-zinc-100 text-xs font-bold transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={actionInProgress === selectedRejectComboItem.id || !comboRejectReason.trim()}
+                onClick={handleRejectComboItem}
+                className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-md transition-all disabled:opacity-50"
+              >
+                {actionInProgress === selectedRejectComboItem.id ? "Declining..." : "Decline Request"}
+              </button>
+            </div>
           </div>
         </div>
       )}

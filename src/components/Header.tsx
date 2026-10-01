@@ -124,6 +124,7 @@ export function Header() {
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-6 bg-white/[0.03] px-8 py-2.5 rounded-full border border-white/5 shadow-inner">
             <NavLink href="/">Home</NavLink>
+            <NavLink href="/combo-packs">Combo Packs</NavLink>
             <NavLink href="/events">Events</NavLink>
             <NavLink href="/travel-tourism">Travel & Tourism</NavLink>
             <NavLink href="/about">About</NavLink>
@@ -206,6 +207,13 @@ export function Header() {
           <nav className="flex flex-col gap-2">
             <Link href="/" className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/5 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>
               Home
+              <svg className="h-5 w-5 text-white/20 transition-transform group-hover:translate-x-1 group-hover:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+            </Link>
+            <Link href="/combo-packs" className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/5 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>
+              <span className="flex items-center gap-2">
+                <span>🎁</span>
+                <span>Combo Packs</span>
+              </span>
               <svg className="h-5 w-5 text-white/20 transition-transform group-hover:translate-x-1 group-hover:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </Link>
             <Link href="/events" className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/5 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>

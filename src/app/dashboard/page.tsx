@@ -89,9 +89,13 @@ export default function ClientDashboard() {
   const { user, role, loading, signOut } = useAuth();
   const [profile, setProfile] = useState<ClientProfile | null>(null);
   const [bookings, setBookings] = useState<Record<string, any>[]>([]);
+  const [comboBookings, setComboBookings] = useState<Record<string, any>[]>([]);
+  const [activeTab, setActiveTab] = useState<"all" | "services" | "combos">("all");
   const [selectedBooking, setSelectedBooking] = useState<Record<string, any> | null>(null);
+  const [selectedComboBooking, setSelectedComboBooking] = useState<Record<string, any> | null>(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<Record<string, any> | null>(null);
+  const [cancelComboTarget, setCancelComboTarget] = useState<Record<string, any> | null>(null);
   const [canceling, setCanceling] = useState(false);
 
   useEffect(() => {
@@ -153,8 +157,22 @@ export default function ClientDashboard() {
       }
     };
 
+    const loadComboBookings = async () => {
+      try {
+        const res = await fetch("/api/combo-packs/bookings");
+        const data = await res.json();
+        if (res.ok && data.success && Array.isArray(data.bookings)) {
+          setComboBookings(data.bookings);
+        }
+      } catch (error) {
+        console.warn("[ClientDashboard] Failed to load combo bookings:", error);
+        setComboBookings([]);
+      }
+    };
+
     loadProfile();
     loadBookings();
+    loadComboBookings();
   }, [loading, role, router, user]);
 
   const handleSignOut = () => {
@@ -198,6 +216,34 @@ export default function ClientDashboard() {
     } catch (error: any) {
       console.error("[ClientDashboard] Cancel booking error:", error);
       alert(error.message || "Failed to cancel booking");
+    } finally {
+      setCanceling(false);
+    }
+  };
+
+  const handleCancelComboBooking = async () => {
+    if (!cancelComboTarget) return;
+    setCanceling(true);
+
+    try {
+      const res = await fetch("/api/combo-packs/bookings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ booking_id: cancelComboTarget.id, action: "cancel" }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to cancel combo booking");
+      }
+
+      setComboBookings((prev) =>
+        prev.map((cb) => (cb.id === cancelComboTarget.id ? { ...cb, status: "cancelled" } : cb))
+      );
+      setCancelComboTarget(null);
+    } catch (error: any) {
+      console.error("[ClientDashboard] Cancel combo booking error:", error);
+      alert(error.message || "Failed to cancel combo booking");
     } finally {
       setCanceling(false);
     }
@@ -295,8 +341,13 @@ export default function ClientDashboard() {
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-                <Link href="/travel-tourism/faabcab" className="w-full sm:w-auto">
+                <Link href="/combo-packs" className="w-full sm:w-auto">
                   <Button className="w-full bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-bold text-xs shadow-lg shadow-cyan-500/20">
+                    🎁 Browse Combo Packs
+                  </Button>
+                </Link>
+                <Link href="/travel-tourism/faabcab" className="w-full sm:w-auto">
+                  <Button variant="secondary" className="w-full text-xs font-bold">
                     Book Transport
                   </Button>
                 </Link>
@@ -316,13 +367,203 @@ export default function ClientDashboard() {
             </div>
           </header>
 
-          <section>
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="text-xl font-black text-zinc-900">
-                <span className="mr-2">📋</span>
-                Your Bookings & Transport Requests ({bookings.length})
-              </h2>
-            </div>
+          {/* Navigation Filter Tabs */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            <button
+              onClick={() => setActiveTab("all")}
+              className={`rounded-2xl px-4 py-2 text-xs font-bold transition-all border ${
+                activeTab === "all"
+                  ? "bg-zinc-900 text-white border-zinc-900 shadow-sm"
+                  : "bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50"
+              }`}
+            >
+              All Requests ({bookings.length + comboBookings.length})
+            </button>
+            <button
+              onClick={() => setActiveTab("combos")}
+              className={`rounded-2xl px-4 py-2 text-xs font-bold transition-all border flex items-center gap-1.5 ${
+                activeTab === "combos"
+                  ? "bg-gradient-to-r from-cyan-500 to-violet-600 text-white border-transparent shadow-md"
+                  : "bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50"
+              }`}
+            >
+              <span>🎁</span>
+              <span>Combo Packages ({comboBookings.length})</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("services")}
+              className={`rounded-2xl px-4 py-2 text-xs font-bold transition-all border ${
+                activeTab === "services"
+                  ? "bg-zinc-900 text-white border-zinc-900 shadow-sm"
+                  : "bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50"
+              }`}
+            >
+              Single Services & Cabs ({bookings.length})
+            </button>
+          </div>
+
+          {/* Combo Packages Section */}
+          {(activeTab === "all" || activeTab === "combos") && (
+            <section className="space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-xl font-black text-zinc-900 flex items-center gap-2">
+                  <span>🎁</span>
+                  <span>Your Combo Packages ({comboBookings.length})</span>
+                </h2>
+                <Link href="/combo-packs" className="text-xs font-bold text-cyan-600 hover:text-cyan-700">
+                  + Book Another Combo
+                </Link>
+              </div>
+
+              {comboBookings.length === 0 ? (
+                activeTab === "combos" && (
+                  <div className="rounded-[28px] border-2 border-dashed border-zinc-200 bg-white p-10 text-center shadow-sm">
+                    <div className="mb-4 text-5xl">🎁</div>
+                    <div className="text-xl font-black text-zinc-900">No combo bookings yet</div>
+                    <p className="mx-auto mt-2 max-w-sm text-sm font-medium text-zinc-500">
+                      Bundle cab transport, verified hotel stays, and guides for maximum savings.
+                    </p>
+                    <div className="mt-6 flex justify-center">
+                      <Link href="/combo-packs">
+                        <Button className="bg-gradient-to-r from-cyan-500 to-violet-600 text-white font-bold text-xs">
+                          Explore Combo Packs
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                )
+              ) : (
+                <div className="space-y-4">
+                  {comboBookings.map((cb) => {
+                    const status = (cb.status || "pending").toLowerCase();
+                    const isCancelable = ["pending", "partially_confirmed", "confirmed"].includes(status);
+
+                    return (
+                      <article
+                        key={cb.id}
+                        className="rounded-[24px] border border-cyan-200/70 bg-gradient-to-br from-white via-cyan-50/20 to-violet-50/20 p-5 shadow-sm transition-all hover:shadow-md"
+                      >
+                        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <div className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500/10 px-3 py-0.5 text-[10px] font-black uppercase tracking-wider text-cyan-700 border border-cyan-500/20 mb-1">
+                                  <span>🎁</span> Multi-Service Combo
+                                </div>
+                                <div className="text-xl font-black text-zinc-900">
+                                  {cb.combo_name || "Evigo Combo Package"}
+                                </div>
+                              </div>
+                              <span
+                                className={`inline-flex rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${
+                                  status === "confirmed"
+                                    ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                                    : status === "partially_confirmed"
+                                    ? "bg-cyan-100 text-cyan-800 border border-cyan-300"
+                                    : status === "completed"
+                                    ? "bg-violet-100 text-violet-800 border border-violet-300"
+                                    : status === "rejected" || status === "action_required"
+                                    ? "bg-red-100 text-red-800 border border-red-300"
+                                    : status === "cancelled"
+                                    ? "bg-slate-200 text-slate-700 border border-slate-300"
+                                    : "bg-amber-100 text-amber-800 border border-amber-300"
+                                }`}
+                              >
+                                {status.replace("_", " ")}
+                              </span>
+                            </div>
+
+                            <div className="mt-4 grid gap-2 text-xs font-semibold text-zinc-600 sm:grid-cols-2 xl:grid-cols-4">
+                              <div className="rounded-xl border border-zinc-200 bg-white/80 px-3 py-2">
+                                <span className="block text-[10px] uppercase tracking-[0.18em] text-zinc-400">Combo ID</span>
+                                <span className="mt-1 block font-mono text-zinc-900">#{String(cb.id).slice(-8).toUpperCase()}</span>
+                              </div>
+                              <div className="rounded-xl border border-zinc-200 bg-white/80 px-3 py-2">
+                                <span className="block text-[10px] uppercase tracking-[0.18em] text-zinc-400">Travel Date</span>
+                                <span className="mt-1 block text-zinc-900">{formatDate(cb.start_date || cb.booking_date)}</span>
+                              </div>
+                              <div className="rounded-xl border border-zinc-200 bg-white/80 px-3 py-2">
+                                <span className="block text-[10px] uppercase tracking-[0.18em] text-zinc-400">Guests</span>
+                                <span className="mt-1 block text-zinc-900">{cb.guest_count || 1} Person(s)</span>
+                              </div>
+                              <div className="rounded-xl border border-zinc-200 bg-white/80 px-3 py-2">
+                                <span className="block text-[10px] uppercase tracking-[0.18em] text-zinc-400">Total Price</span>
+                                <span className="mt-1 block font-bold text-emerald-700">₹{Number(cb.total_amount || 0).toLocaleString("en-IN")}</span>
+                              </div>
+                            </div>
+
+                            {/* Included Services Itemized Realtime Status */}
+                            <div className="mt-4 rounded-2xl border border-zinc-200/80 bg-white/90 p-4">
+                              <div className="text-[11px] font-bold uppercase tracking-wider text-zinc-500 mb-2.5">
+                                Included Services & Live Provider Responses:
+                              </div>
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                {cb.items && cb.items.length > 0 ? (
+                                  cb.items.map((item: any, idx: number) => {
+                                    const itemStatus = (item.provider_booking_status || "pending").toLowerCase();
+                                    return (
+                                      <div
+                                        key={item.id || idx}
+                                        className="flex items-center justify-between rounded-xl border border-zinc-100 bg-zinc-50/80 p-2.5 text-xs"
+                                      >
+                                        <div>
+                                          <div className="font-bold text-zinc-900">{item.service_type}</div>
+                                          <div className="text-[11px] text-zinc-500">{item.provider_name || "Provider"}</div>
+                                        </div>
+                                        <span
+                                          className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase ${
+                                            itemStatus === "confirmed"
+                                              ? "bg-emerald-100 text-emerald-700"
+                                              : itemStatus === "rejected"
+                                              ? "bg-red-100 text-red-700"
+                                              : itemStatus === "completed"
+                                              ? "bg-violet-100 text-violet-700"
+                                              : itemStatus === "cancelled"
+                                              ? "bg-slate-200 text-slate-700"
+                                              : "bg-amber-100 text-amber-700"
+                                          }`}
+                                        >
+                                          {itemStatus}
+                                        </span>
+                                      </div>
+                                    );
+                                  })
+                                ) : (
+                                  <div className="text-xs text-zinc-400">Services linked to booking.</div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex min-w-[140px] flex-col gap-2 xl:items-end justify-between self-stretch">
+                            {isCancelable && (
+                              <button
+                                type="button"
+                                onClick={() => setCancelComboTarget(cb)}
+                                className="w-full xl:w-auto rounded-xl border border-red-200 bg-red-50 px-3.5 py-2 text-[11px] font-bold text-red-600 transition hover:bg-red-100 mt-auto"
+                              >
+                                Cancel Package
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* Single Service Bookings Section */}
+          {(activeTab === "all" || activeTab === "services") && (
+            <section className="space-y-4">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h2 className="text-xl font-black text-zinc-900">
+                  <span className="mr-2">📋</span>
+                  Single Service & Transport Requests ({bookings.length})
+                </h2>
+              </div>
 
             {bookings.length === 0 ? (
               <div className="rounded-[28px] border-2 border-dashed border-zinc-200 bg-white p-10 text-center shadow-sm">
@@ -482,6 +723,7 @@ export default function ClientDashboard() {
               </div>
             )}
           </section>
+          )}
         </div>
       </Container>
 
@@ -534,6 +776,42 @@ export default function ClientDashboard() {
                 className="rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-red-700 disabled:opacity-60"
               >
                 {canceling ? "Cancelling..." : "Yes, Cancel Booking"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cancelComboTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-[24px] border border-red-200 bg-white p-6 shadow-2xl">
+            <div className="mb-4 text-3xl">⚠️</div>
+            <h3 className="text-xl font-black text-zinc-900">Cancel this Combo Package?</h3>
+            <p className="mt-2 text-sm font-medium text-zinc-600">
+              This will cancel the entire package and notify all assigned service providers.
+            </p>
+
+            <div className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 p-3.5 text-xs font-semibold text-zinc-700 space-y-1">
+              <div className="font-bold text-zinc-900">Package: {cancelComboTarget.combo_name || "Evigo Combo Package"}</div>
+              <div>Booking ID: #{String(cancelComboTarget.id).slice(-8).toUpperCase()}</div>
+              <div>Total Price: ₹{Number(cancelComboTarget.total_amount || 0).toLocaleString("en-IN")}</div>
+            </div>
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setCancelComboTarget(null)}
+                className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50"
+              >
+                Keep Package
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelComboBooking}
+                disabled={canceling}
+                className="rounded-xl bg-red-600 px-4 py-2 text-xs font-bold text-white transition hover:bg-red-700 disabled:opacity-60"
+              >
+                {canceling ? "Cancelling..." : "Yes, Cancel Package"}
               </button>
             </div>
           </div>
