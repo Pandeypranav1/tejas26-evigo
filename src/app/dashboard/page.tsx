@@ -283,7 +283,7 @@ export default function ClientDashboard() {
                 </div>
 
                 <div className="flex items-center gap-3 self-start xl:justify-end">
-                  <NotificationBell userId={user.id} />
+                  <NotificationBell userId={user.id} variant="light" />
                   <Button
                     variant="secondary"
                     className="text-xs font-bold"

@@ -20,10 +20,12 @@ export function NotificationBell({
   userId,
   dashboardHref = "/dashboard",
   onNewBooking,
+  variant = "dark",
 }: {
   userId: string;
   dashboardHref?: string;
   onNewBooking?: (notification: NotificationItem) => void;
+  variant?: "light" | "dark";
 }) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -233,6 +235,15 @@ export function NotificationBell({
     }
   };
 
+  const buttonClasses =
+    variant === "light"
+      ? "relative min-h-[40px] px-3 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 active:bg-zinc-300 border border-zinc-200/90 text-zinc-900 transition-all duration-200 flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-sm"
+      : "relative min-h-[40px] px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 active:bg-white/30 border border-white/15 text-white transition-all duration-200 flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-cyan-400 shadow-sm";
+
+  const iconClasses = variant === "light" ? "w-5 h-5 text-zinc-700 shrink-0" : "w-5 h-5 text-white shrink-0";
+
+  const ariaLabelText = unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications";
+
   return (
     <div className="relative inline-block" ref={dropdownRef}>
       <button
@@ -242,13 +253,13 @@ export function NotificationBell({
           setIsOpen((prev) => !prev);
           if (!isOpen) void fetchNotifications();
         }}
-        className="relative p-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white transition-all duration-200 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-cyan-400"
+        className={buttonClasses}
         title="Notifications"
-        aria-label="Notifications"
+        aria-label={ariaLabelText}
         aria-expanded={isOpen}
       >
         <svg
-          className="w-5 h-5"
+          className={iconClasses}
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -262,8 +273,8 @@ export function NotificationBell({
         </svg>
 
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-r from-red-500 to-pink-500 text-[10px] font-black text-white shadow-md animate-pulse">
-            {unreadCount > 9 ? "9+" : unreadCount}
+          <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-gradient-to-r from-red-500 via-rose-500 to-pink-500 px-1 text-[11px] font-black text-white shadow-md animate-pulse">
+            {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
       </button>
