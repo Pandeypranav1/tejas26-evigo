@@ -176,6 +176,32 @@ export async function POST(request: Request) {
 
     const supabase = getSupabaseClient();
 
+    // Idempotency check: prevent duplicate booking creation
+    // Check for existing booking with same customer, service, and date in non-terminal state
+    const { data: existingBooking } = await supabase
+      .from("bookings")
+      .select("*")
+      .eq("customer_phone", effectiveCustomerPhone)
+      .eq("service_type", effectiveServiceType)
+      .eq("travel_date", travel_date || effectiveEventDate)
+      .in("status", ["pending", "confirmed"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingBooking) {
+      console.log("[POST /api/bookings] Returning existing booking to prevent duplicate:", existingBooking.id);
+      return NextResponse.json(
+        {
+          success: true,
+          message: "Booking already exists for this request",
+          booking: existingBooking,
+          is_existing: true,
+        },
+        { status: 200 }
+      );
+    }
+
     // Booking payload: structured columns preserved, message strictly for special requests
     const bookingPayload: Record<string, any> = {
       client_id: client_id || null,
@@ -272,15 +298,22 @@ export async function POST(request: Request) {
       let providerEmail: string | null = null;
 
       if (sanitizedProviderUuid) {
-        const { data: provRow } = await supabase
+        const { data: provRow, error: provError } = await supabase
           .from("providers")
           .select("id, user_id, business_name")
           .eq("id", sanitizedProviderUuid)
           .maybeSingle();
 
-        if (provRow?.user_id) {
+        if (provError) {
+          console.error("[POST /api/bookings] Error fetching provider:", provError);
+        } else if (provRow?.user_id) {
           providerUserId = provRow.user_id;
+          console.log("[POST /api/bookings] Found provider user_id:", providerUserId);
+        } else {
+          console.warn("[POST /api/bookings] Provider UUID found but no user_id:", sanitizedProviderUuid);
         }
+      } else {
+        console.warn("[POST /api/bookings] No provider_uuid available for notification");
       }
 
       // If user_id found, get provider email from profiles
@@ -296,47 +329,62 @@ export async function POST(request: Request) {
         }
       }
 
+      // Only send notification if we have a valid provider user_id
+      if (!providerUserId) {
+        console.error("[POST /api/bookings] Cannot send notification - no provider user_id found");
+      }
+
       // 1. Create In-App Notification for Provider
       if (providerUserId) {
-        await createNotificationServer({
-          userId: providerUserId,
-          bookingId: booking.id,
-          title: isTransport ? "🚗 New Transport Booking" : "New Booking Request",
-          message: isTransport
-            ? [
-              `Customer: ${booking.customer_name || effectiveCustomerName}`,
-              `Pickup: ${booking.pickup_location || "Not provided"}`,
-              `Drop: ${booking.drop_location || "Not provided"}`,
-              `Date: ${booking.travel_date || "Not provided"}`,
-              `Time: ${booking.pickup_time || "Not provided"}`,
-              `Passengers: ${booking.passenger_count ?? "Not provided"}`,
-              `Service: ${booking.transport_service || effectiveServiceType}`,
-            ].join("\n")
-            : `New ${effectiveServiceType} booking from ${effectiveCustomerName} for ${bookingPayload.event_date}`,
-          type: "booking_new",
-        });
+        try {
+          await createNotificationServer({
+            userId: providerUserId,
+            bookingId: booking.id,
+            title: isTransport ? "🚗 New Transport Booking" : "New Booking Request",
+            message: isTransport
+              ? [
+                `Customer: ${booking.customer_name || effectiveCustomerName}`,
+                `Pickup: ${booking.pickup_location || "Not provided"}`,
+                `Drop: ${booking.drop_location || "Not provided"}`,
+                `Date: ${booking.travel_date || "Not provided"}`,
+                `Time: ${booking.pickup_time || "Not provided"}`,
+                `Passengers: ${booking.passenger_count ?? "Not provided"}`,
+                `Service: ${booking.transport_service || effectiveServiceType}`,
+              ].join("\n")
+              : `New ${effectiveServiceType} booking from ${effectiveCustomerName} for ${bookingPayload.event_date}`,
+            type: "booking_new",
+          });
+          console.log("[POST /api/bookings] Notification sent to provider:", providerUserId);
+        } catch (notifErr) {
+          console.error("[POST /api/bookings] Failed to create notification:", notifErr);
+        }
       }
 
       // 2. Send Server-Side Brevo Email to Provider
       if (providerEmail) {
-        await sendNewBookingEmailToProvider({
-          providerEmail,
-          providerName: effectiveProviderName,
-          bookingId: booking.id,
-          customerName: effectiveCustomerName,
-          customerPhone: effectiveCustomerPhone,
-          customerEmail: customer_email || null,
-          service: effectiveServiceType,
-          date: bookingPayload.event_date || "Not specified",
-          time: bookingPayload.event_time || null,
-          pickup: bookingPayload.pickup_location,
-          destination: bookingPayload.drop_location,
-          passengers: bookingPayload.passenger_count,
-          specialRequest: bookingPayload.message,
-        });
+        try {
+          await sendNewBookingEmailToProvider({
+            providerEmail,
+            providerName: effectiveProviderName,
+            bookingId: booking.id,
+            customerName: effectiveCustomerName,
+            customerPhone: effectiveCustomerPhone,
+            customerEmail: customer_email || null,
+            service: effectiveServiceType,
+            date: bookingPayload.event_date || "Not specified",
+            time: bookingPayload.event_time || null,
+            pickup: bookingPayload.pickup_location,
+            destination: bookingPayload.drop_location,
+            passengers: bookingPayload.passenger_count,
+            specialRequest: bookingPayload.message,
+          });
+          console.log("[POST /api/bookings] Email sent to provider:", providerEmail);
+        } catch (emailErr) {
+          console.error("[POST /api/bookings] Failed to send email:", emailErr);
+        }
       }
     } catch (notifyErr) {
-      console.warn("[POST /api/bookings] Notification/Email warning (booking still succeeded):", notifyErr);
+      console.error("[POST /api/bookings] Notification/Email error (booking still succeeded):", notifyErr);
     }
 
     return NextResponse.json(

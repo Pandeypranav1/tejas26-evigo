@@ -75,6 +75,8 @@ export default function FaabCabPartnerPage() {
   const [bookingStage, setBookingStage] = useState<"details" | "review" | "confirmed">("details");
   const [bookingId, setBookingId] = useState<string | null>(null);
   const [bookingStatus, setBookingStatus] = useState("pending");
+  const [paymentStatus, setPaymentStatus] = useState<"idle" | "initiating" | "processing" | "success" | "failed">("idle");
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
   // Reset and pre-fill user details on auth change
   useEffect(() => {
@@ -145,13 +147,15 @@ export default function FaabCabPartnerPage() {
   const handleConfirmBooking = async () => {
     if (submitting || bookingStage !== "review") return;
     setError(null);
+    setPaymentError(null);
     setSubmitting(true);
+    setPaymentStatus("initiating");
 
     try {
       const matchedService = FAABCAB_SERVICES.find((s) => s.title === selectedService);
       const serviceId = matchedService?.id || "inter-city";
 
-      // 1. Submit to Supabase API
+      // 1. Submit to Supabase API to create booking
       const res = await fetch("/api/bookings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -182,21 +186,116 @@ export default function FaabCabPartnerPage() {
         throw new Error(data.error || "Failed to submit transport request.");
       }
 
-      // 2. Also save to demo store for local state compatibility
-      const demoUser = getDemoUser();
-      saveDemoBooking({
-        providerId: "faab-cab",
-        providerOwnerUid: "faab-cab-owner",
-        clientUid: demoUser?.uid || user?.id || "guest",
-        clientPhone: customerPhone.trim(),
-        eventDate: travelDate,
-        location: `${pickupLocation.trim()} → ${dropLocation.trim()}`,
-        notes: `Service: ${selectedService} | Time: ${pickupTime} | Passengers: ${passengerCount}${specialRequest ? ` | ${specialRequest}` : ""}`,
+      const newBookingId = data.booking?.id ? String(data.booking.id) : null;
+      setBookingId(newBookingId);
+      setBookingStatus(data.booking?.status || "pending");
+
+      // 2. If booking already existed (idempotency), skip payment initiation
+      if (data.is_existing && data.booking?.payment_status === 'paid') {
+        setPaymentStatus("success");
+        setBookingStage("confirmed");
+        setSubmitting(false);
+        return;
+      }
+
+      // 3. Initiate payment
+      setPaymentStatus("processing");
+      const paymentRes = await fetch(`/api/bookings/${newBookingId}/initiate-payment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payment_method: "upi" }),
       });
 
-      setBookingId(data.booking?.id ? String(data.booking.id) : null);
-      setBookingStatus(data.booking?.status || "pending");
-      setBookingStage("confirmed");
+      // Handle non-JSON responses
+      const contentType = paymentRes.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await paymentRes.text();
+        console.error("[FaabCab] Payment initiation - Non-JSON response:", text);
+        throw new Error("Payment service temporarily unavailable. Please try again.");
+      }
+
+      const paymentData = await paymentRes.json();
+      if (!paymentRes.ok || !paymentData.success) {
+        throw new Error(paymentData.error || "Failed to initiate payment.");
+      }
+
+      // 4. Load Razorpay script and open checkout
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.async = true;
+      script.onload = () => {
+        const options = {
+          key: "rzp_test_Tj7eWV9vwhI5lG", // Razorpay test key ID
+          amount: paymentData.amount * 100, // Convert to paise
+          currency: "INR",
+          name: "Evigo",
+          description: `FaabCab Transport - ${selectedService}`,
+          order_id: paymentData.checkout_data?.order_id,
+          prefill: {
+            name: customerName.trim(),
+            email: customerEmail.trim(),
+            contact: customerPhone.trim(),
+          },
+          theme: {
+            color: "#10b981",
+          },
+          handler: async (response: any) => {
+            // Payment successful - verify server-side
+            try {
+              const verifyRes = await fetch("/api/payments/verify", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  payment_id: paymentData.payment_id,
+                  gateway_payment_id: response.razorpay_payment_id,
+                  gateway_order_id: response.razorpay_order_id,
+                  signature: response.razorpay_signature,
+                }),
+              });
+
+              const verifyData = await verifyRes.json();
+              if (verifyRes.ok && verifyData.success) {
+                setPaymentStatus("success");
+                setBookingStage("confirmed");
+                // Also save to demo store for local state compatibility
+                const demoUser = getDemoUser();
+                saveDemoBooking({
+                  providerId: "faab-cab",
+                  providerOwnerUid: "faab-cab-owner",
+                  clientUid: demoUser?.uid || user?.id || "guest",
+                  clientPhone: customerPhone.trim(),
+                  eventDate: travelDate,
+                  location: `${pickupLocation.trim()} → ${dropLocation.trim()}`,
+                  notes: `Service: ${selectedService} | Time: ${pickupTime} | Passengers: ${passengerCount}${specialRequest ? ` | ${specialRequest}` : ""}`,
+                });
+              } else {
+                throw new Error(verifyData.error || "Payment verification failed.");
+              }
+            } catch (err: any) {
+              console.error("[FaabCab] Payment verification error:", err);
+              setPaymentStatus("failed");
+              setPaymentError(err.message || "Payment verification failed. Please contact support if payment was deducted.");
+            } finally {
+              setSubmitting(false);
+            }
+          },
+          modal: {
+            ondismiss: () => {
+              setPaymentStatus("idle");
+              setSubmitting(false);
+            },
+          },
+        };
+
+        const rzp = new (window as any).Razorpay(options);
+        rzp.open();
+      };
+      script.onerror = () => {
+        setPaymentStatus("failed");
+        setPaymentError("Failed to load payment gateway. Please try again.");
+        setSubmitting(false);
+      };
+      document.body.appendChild(script);
     } catch (err: any) {
       console.error("[FaabCab Booking Error]", err);
       const message = typeof err?.message === "string" ? err.message : "";
@@ -551,9 +650,27 @@ export default function FaabCabPartnerPage() {
                     <span className="text-sm font-bold text-white">Price to be confirmed</span>
                   </div>
                   {bookingStage === "review" && (
-                    <button type="button" onClick={handleConfirmBooking} disabled={submitting} className="mt-6 min-h-14 w-full rounded-xl bg-emerald-400 px-4 text-base font-black text-zinc-950 transition hover:bg-emerald-300 disabled:cursor-wait disabled:opacity-70">
-                      {submitting ? "Creating your booking..." : "Confirm & Book"}
-                    </button>
+                    <>
+                      <button type="button" onClick={handleConfirmBooking} disabled={submitting} className="mt-6 min-h-14 w-full rounded-xl bg-emerald-400 px-4 text-base font-black text-zinc-950 transition hover:bg-emerald-300 disabled:cursor-wait disabled:opacity-70">
+                        {paymentStatus === "initiating" ? "Creating booking..." : paymentStatus === "processing" ? "Opening secure payment..." : "Confirm Booking & Pay"}
+                      </button>
+                      {paymentError && (
+                        <div className="mt-4 rounded-xl border border-rose-400/30 bg-rose-400/10 p-4 text-sm font-medium text-rose-200">
+                          <p className="font-bold">Payment Failed</p>
+                          <p className="mt-1">{paymentError}</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPaymentError(null);
+                              setPaymentStatus("idle");
+                            }}
+                            className="mt-3 rounded-lg bg-rose-400/20 px-3 py-2 text-xs font-bold text-rose-200 hover:bg-rose-400/30"
+                          >
+                            Retry Payment
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </aside>
               </div>

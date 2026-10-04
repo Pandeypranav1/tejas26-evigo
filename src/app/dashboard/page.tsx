@@ -9,6 +9,8 @@ import { useAuth } from "@/context/AuthContext";
 import { NotificationBell } from "@/components/NotificationBell";
 import { EditProfileModal } from "@/components/EditProfileModal";
 import { BookingDetailsModal } from "@/components/BookingDetailsModal";
+import PaymentCheckout from "@/components/PaymentCheckout";
+import { createClient } from "@/lib/client";
 
 type ClientProfile = {
   id?: string;
@@ -90,13 +92,21 @@ export default function ClientDashboard() {
   const [profile, setProfile] = useState<ClientProfile | null>(null);
   const [bookings, setBookings] = useState<Record<string, any>[]>([]);
   const [comboBookings, setComboBookings] = useState<Record<string, any>[]>([]);
-  const [activeTab, setActiveTab] = useState<"all" | "services" | "combos">("all");
+  const [payments, setPayments] = useState<Record<string, any>[]>([]);
+  const [activeTab, setActiveTab] = useState<"all" | "services" | "combos" | "payments">("all");
   const [selectedBooking, setSelectedBooking] = useState<Record<string, any> | null>(null);
   const [selectedComboBooking, setSelectedComboBooking] = useState<Record<string, any> | null>(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<Record<string, any> | null>(null);
   const [cancelComboTarget, setCancelComboTarget] = useState<Record<string, any> | null>(null);
   const [canceling, setCanceling] = useState(false);
+  const [paymentCheckout, setPaymentCheckout] = useState<{
+    isOpen: boolean;
+    bookingId?: string;
+    comboBookingId?: string;
+    bookingName?: string;
+    amount?: number;
+  }>({ isOpen: false });
 
   useEffect(() => {
     if (loading) return;
@@ -170,9 +180,51 @@ export default function ClientDashboard() {
       }
     };
 
+    const loadPayments = async () => {
+      try {
+        const res = await fetch(`/api/payments?user_id=${encodeURIComponent(user.id)}`);
+        const data = await res.json();
+        if (res.ok && data.success && Array.isArray(data.payments)) {
+          setPayments(data.payments);
+        }
+      } catch (error) {
+        console.warn("[ClientDashboard] Failed to load payments:", error);
+        setPayments([]);
+      }
+    };
+
     loadProfile();
     loadBookings();
     loadComboBookings();
+    loadPayments();
+
+    // Set up Supabase realtime subscription for payments
+    if (user) {
+      const supabase = createClient();
+      const paymentsSubscription = supabase
+        .channel('payments-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'payments',
+            filter: `user_id=eq.${user.id}`,
+          },
+          (payload) => {
+            console.log('[ClientDashboard] Payment change detected:', payload);
+            loadPayments();
+            // Also reload bookings/combo bookings as payment_status may have changed
+            loadBookings();
+            loadComboBookings();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(paymentsSubscription);
+      };
+    }
   }, [loading, role, router, user]);
 
   const handleSignOut = () => {
@@ -247,6 +299,24 @@ export default function ClientDashboard() {
     } finally {
       setCanceling(false);
     }
+  };
+
+  const handlePayNow = (booking: Record<string, any>) => {
+    setPaymentCheckout({
+      isOpen: true,
+      bookingId: booking.id,
+      bookingName: `${booking.provider_name} - ${booking.service_type || booking.transport_service}`,
+      amount: 500, // Default amount - server will provide authoritative amount
+    });
+  };
+
+  const handleComboPayNow = (comboBooking: Record<string, any>) => {
+    setPaymentCheckout({
+      isOpen: true,
+      comboBookingId: comboBooking.id,
+      bookingName: comboBooking.combo_name || "Combo Package",
+      amount: Number(comboBooking.total_amount || 0),
+    });
   };
 
   const profileDisplayName = profile?.full_name || user?.email?.split("@")?.[0] || "Client";
@@ -400,6 +470,17 @@ export default function ClientDashboard() {
             >
               Single Services & Cabs ({bookings.length})
             </button>
+            <button
+              onClick={() => setActiveTab("payments")}
+              className={`rounded-2xl px-4 py-2 text-xs font-bold transition-all border flex items-center gap-1.5 ${
+                activeTab === "payments"
+                  ? "bg-gradient-to-r from-emerald-500 to-cyan-600 text-white border-transparent shadow-md"
+                  : "bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-50"
+              }`}
+            >
+              <span>💳</span>
+              <span>My Payments ({payments.length})</span>
+            </button>
           </div>
 
           {/* Combo Packages Section */}
@@ -536,6 +617,31 @@ export default function ClientDashboard() {
                           </div>
 
                           <div className="flex min-w-[140px] flex-col gap-2 xl:items-end justify-between self-stretch">
+                            {/* Payment Status Display */}
+                            <div className="flex flex-col gap-1 xl:items-end">
+                              <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wide">Payment</span>
+                              {cb.payment_status === 'paid' ? (
+                                <span className="text-[11px] font-bold text-green-600">PAID</span>
+                              ) : cb.payment_status === 'failed' ? (
+                                <span className="text-[11px] font-bold text-red-600">FAILED</span>
+                              ) : cb.payment_status === 'refunded' ? (
+                                <span className="text-[11px] font-bold text-amber-600">REFUNDED</span>
+                              ) : (
+                                <span className="text-[11px] font-bold text-amber-500">PENDING</span>
+                              )}
+                            </div>
+
+                            {/* Retry Payment Button - only for failed payments */}
+                            {cb.payment_status === 'failed' && (
+                              <button
+                                type="button"
+                                onClick={() => handleComboPayNow(cb)}
+                                className="w-full xl:w-auto rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 px-3.5 py-2 text-[11px] font-bold text-white transition hover:opacity-90"
+                              >
+                                Retry Payment
+                              </button>
+                            )}
+
                             {isCancelable && (
                               <button
                                 type="button"
@@ -705,6 +811,31 @@ export default function ClientDashboard() {
                               View Details
                             </button>
 
+                            {/* Payment Status Display */}
+                            <div className="flex flex-col gap-1">
+                              <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wide">Payment</span>
+                              {booking.payment_status === 'paid' ? (
+                                <span className="text-[11px] font-bold text-green-600">PAID</span>
+                              ) : booking.payment_status === 'failed' ? (
+                                <span className="text-[11px] font-bold text-red-600">FAILED</span>
+                              ) : booking.payment_status === 'refunded' ? (
+                                <span className="text-[11px] font-bold text-amber-600">REFUNDED</span>
+                              ) : (
+                                <span className="text-[11px] font-bold text-amber-500">PENDING</span>
+                              )}
+                            </div>
+
+                            {/* Retry Payment Button - only for failed payments */}
+                            {booking.payment_status === 'failed' && (
+                              <button
+                                type="button"
+                                onClick={() => handlePayNow(booking)}
+                                className="rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 px-3 py-2 text-[11px] font-bold text-white transition hover:opacity-90"
+                              >
+                                Retry Payment
+                              </button>
+                            )}
+
                             {isEligibleForCancellation(status) && (
                               <button
                                 type="button"
@@ -723,6 +854,100 @@ export default function ClientDashboard() {
               </div>
             )}
           </section>
+          )}
+
+          {/* My Payments Section */}
+          {activeTab === "payments" && (
+            <section className="space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-xl font-black text-zinc-900 flex items-center gap-2">
+                  <span>💳</span>
+                  <span>My Payments ({payments.length})</span>
+                </h2>
+              </div>
+
+              {payments.length === 0 ? (
+                <div className="rounded-[28px] border-2 border-dashed border-zinc-200 bg-white p-10 text-center shadow-sm">
+                  <div className="mb-4 text-5xl">💳</div>
+                  <div className="text-xl font-black text-zinc-900">No payments yet</div>
+                  <p className="mx-auto mt-2 max-w-sm text-sm font-medium text-zinc-500">
+                    Your payment history will appear here.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {payments.map((payment) => {
+                    const status = (payment.status || "pending").toLowerCase();
+                    const statusStyles: Record<string, string> = {
+                      success: "bg-emerald-100 text-emerald-700 border border-emerald-300",
+                      failed: "bg-red-100 text-red-700 border border-red-300",
+                      pending: "bg-amber-100 text-amber-700 border border-amber-300",
+                      processing: "bg-blue-100 text-blue-700 border border-blue-300",
+                      refunded: "bg-violet-100 text-violet-700 border border-violet-300",
+                    };
+
+                    return (
+                      <article
+                        key={payment.id}
+                        className="rounded-[24px] border border-zinc-200 bg-white p-4 shadow-sm transition-all hover:shadow-md sm:p-5"
+                      >
+                        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <div className="text-lg font-black text-zinc-900">
+                                  {payment.booking_id ? "Transport Booking" : payment.combo_booking_id ? "Combo Package" : "Payment"}
+                                </div>
+                                <div className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">
+                                  {payment.booking_id ? `Booking #${String(payment.booking_id).slice(-8)}` : payment.combo_booking_id ? `Combo #${String(payment.combo_booking_id).slice(-8)}` : ""}
+                                </div>
+                              </div>
+                              <span className={`inline-flex rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${statusStyles[status] || "bg-zinc-100 text-zinc-700 border border-zinc-200"}`}>
+                                {status.replace("_", " ")}
+                              </span>
+                            </div>
+
+                            <div className="mt-4 grid gap-2 text-xs font-semibold text-zinc-600 sm:grid-cols-2 xl:grid-cols-4">
+                              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+                                <span className="block text-[10px] uppercase tracking-[0.18em] text-zinc-400">Payment ID</span>
+                                <span className="mt-1 block font-mono text-zinc-900">#{String(payment.id).slice(-8).toUpperCase()}</span>
+                              </div>
+                              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+                                <span className="block text-[10px] uppercase tracking-[0.18em] text-zinc-400">Amount</span>
+                                <span className="mt-1 block font-bold text-emerald-700">₹{Number(payment.amount || 0).toLocaleString("en-IN")}</span>
+                              </div>
+                              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+                                <span className="block text-[10px] uppercase tracking-[0.18em] text-zinc-400">Date</span>
+                                <span className="mt-1 block text-zinc-900">{formatDate(payment.created_at)}</span>
+                              </div>
+                              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+                                <span className="block text-[10px] uppercase tracking-[0.18em] text-zinc-400">Gateway</span>
+                                <span className="mt-1 block text-zinc-900 capitalize">{payment.selected_gateway || "N/A"}</span>
+                              </div>
+                            </div>
+
+                            {payment.payment_method && (
+                              <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
+                                <span className="block text-[10px] uppercase tracking-[0.18em] text-zinc-400">Payment Method</span>
+                                <span className="mt-1 block text-zinc-900 capitalize">{payment.payment_method}</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex min-w-[140px] flex-col gap-2 xl:items-end">
+                            <Link href={`/payment/${status === 'success' ? 'success' : 'failed'}?payment_id=${payment.id}`} className="w-full xl:w-auto">
+                              <Button variant="secondary" className="w-full text-xs font-bold">
+                                View Details
+                              </Button>
+                            </Link>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
           )}
         </div>
       </Container>
@@ -803,7 +1028,7 @@ export default function ClientDashboard() {
                 onClick={() => setCancelComboTarget(null)}
                 className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-xs font-bold text-zinc-700 transition hover:bg-zinc-50"
               >
-                Keep Package
+                Back
               </button>
               <button
                 type="button"
@@ -817,6 +1042,15 @@ export default function ClientDashboard() {
           </div>
         </div>
       )}
+
+      <PaymentCheckout
+        isOpen={paymentCheckout.isOpen}
+        onClose={() => setPaymentCheckout({ isOpen: false })}
+        bookingId={paymentCheckout.bookingId}
+        comboBookingId={paymentCheckout.comboBookingId}
+        bookingName={paymentCheckout.bookingName}
+        amount={paymentCheckout.amount}
+      />
     </main>
   );
 }
