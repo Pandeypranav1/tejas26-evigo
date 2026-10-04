@@ -4,6 +4,17 @@ import { createAdminClient } from '@/lib/supabase';
 import { PaymentService } from '@/lib/payment/service';
 import { PaymentMethod } from '@/lib/payment/types';
 
+const VALID_PAYMENT_METHODS = new Set<PaymentMethod>(['upi', 'card', 'netbanking', 'wallet', 'emi']);
+
+function getValidatedPaymentMethod(value: unknown): PaymentMethod | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return VALID_PAYMENT_METHODS.has(normalized as PaymentMethod) ? (normalized as PaymentMethod) : null;
+}
+
 export const runtime = 'nodejs';
 
 export async function POST(
@@ -19,8 +30,18 @@ export async function POST(
     if (!user) {
       return NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 });
     }
-    const body = await request.json();
-    const { payment_method = 'upi' } = body;
+
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ success: false, error: 'Invalid request body' }, { status: 400 });
+    }
+
+    const payment_method = getValidatedPaymentMethod(body?.payment_method ?? 'upi');
+    if (!payment_method) {
+      return NextResponse.json({ success: false, error: 'Unsupported payment method' }, { status: 400 });
+    }
 
     const supabase = createAdminClient();
 
@@ -70,23 +91,24 @@ export async function POST(
       });
     }
 
-    // Calculate booking amount (server-side authoritative calculation)
-    let amount = 0;
-    if (booking.service_type === 'Transport' || booking.transport_service) {
-      // For transport, use a base rate or fetch from pricing table
-      // For now, use a default rate - this should be enhanced with actual pricing logic
-      amount = 500; // Base rate in INR
-    } else {
-      // For other services, use a default rate
-      amount = 1000;
+    const bookingAmount = Number(booking.amount ?? booking.total_amount ?? booking.final_amount ?? booking.price ?? 0);
+    const defaultAmount = booking.service_type === 'Transport' || booking.transport_service ? 500 : 1000;
+    const amount = Number.isFinite(bookingAmount) && bookingAmount > 0 ? bookingAmount : defaultAmount;
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return NextResponse.json({ success: false, error: 'Invalid booking amount' }, { status: 400 });
     }
 
     // Get user profile for payment details
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('full_name, phone, email')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
+
+    if (profileError && profileError.code !== 'PGRST116') {
+      console.warn('[POST /api/bookings/:id/initiate-payment] Profile query error:', profileError.message);
+    }
 
     const customerName = booking.customer_name || profile?.full_name || user.user_metadata?.full_name || 'Customer';
     const customerPhone = booking.customer_phone || profile?.phone || user.phone || '';
@@ -97,7 +119,7 @@ export async function POST(
       user_id: user.id,
       amount,
       currency: 'INR',
-      payment_method: payment_method as PaymentMethod,
+      payment_method,
       customer_name: customerName,
       customer_email: customerEmail,
       customer_phone: customerPhone,

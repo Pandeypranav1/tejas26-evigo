@@ -4,6 +4,17 @@ import { createAdminClient } from '@/lib/supabase';
 import { PaymentService } from '@/lib/payment/service';
 import { PaymentMethod } from '@/lib/payment/types';
 
+const VALID_PAYMENT_METHODS = new Set<PaymentMethod>(['upi', 'card', 'netbanking', 'wallet', 'emi']);
+
+function getValidatedPaymentMethod(value: unknown): PaymentMethod | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return VALID_PAYMENT_METHODS.has(normalized as PaymentMethod) ? (normalized as PaymentMethod) : null;
+}
+
 export const runtime = 'nodejs';
 
 export async function POST(
@@ -19,8 +30,18 @@ export async function POST(
     if (!user) {
       return NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 });
     }
-    const body = await request.json();
-    const { payment_method = 'upi' } = body;
+
+    let body: any = {};
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ success: false, error: 'Invalid request body' }, { status: 400 });
+    }
+
+    const payment_method = getValidatedPaymentMethod(body?.payment_method ?? 'upi');
+    if (!payment_method) {
+      return NextResponse.json({ success: false, error: 'Unsupported payment method' }, { status: 400 });
+    }
 
     const supabase = createAdminClient();
 
@@ -73,7 +94,7 @@ export async function POST(
     // Use the server-side calculated total_amount from combo_booking
     const amount = Number(comboBooking.total_amount);
 
-    if (amount <= 0) {
+    if (!Number.isFinite(amount) || amount <= 0) {
       return NextResponse.json(
         { success: false, error: 'Invalid booking amount' },
         { status: 400 }
@@ -89,7 +110,7 @@ export async function POST(
       user_id: user.id,
       amount,
       currency: 'INR',
-      payment_method: payment_method as PaymentMethod,
+      payment_method,
       customer_name: customerName,
       customer_email: customerEmail,
       customer_phone: customerPhone,

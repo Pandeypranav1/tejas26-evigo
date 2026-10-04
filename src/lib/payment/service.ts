@@ -7,8 +7,8 @@ import { createAdminClient } from '@/lib/supabase';
 import { PaymentRouter } from './router';
 import { createGatewayAdapter } from './adapters';
 import { createNotificationServer } from '@/lib/notifications';
+
 import {
-  CreateOrderParams,
   PaymentStatus,
   PaymentMethod,
   GatewayCode,
@@ -39,11 +39,50 @@ export class PaymentService {
   /**
    * Create a payment and route to appropriate gateway
    */
-  static async createPayment(params: CreatePaymentParams): Promise<CreatePaymentResult> {
+  static async createPayment(
+    params: CreatePaymentParams
+  ): Promise<CreatePaymentResult> {
     const supabase = createAdminClient();
 
     try {
-      // 1. Create payment record
+      // ========================================================
+      // 1. SELECT GATEWAY FIRST
+      // ========================================================
+      // IMPORTANT:
+      // The payments.gateway column is NOT NULL.
+      // Therefore gateway must be selected BEFORE inserting
+      // the payment record.
+      // ========================================================
+
+      const routingDecision = await PaymentRouter.selectGateway({
+        amount: params.amount,
+        payment_method: params.payment_method,
+      });
+
+      if (!routingDecision) {
+        console.error(
+          '[PaymentService] No available payment gateway for request'
+        );
+
+        return {
+          success: false,
+          error: 'No available payment gateway',
+        };
+      }
+
+      console.log('[PaymentService] Gateway selected:', {
+        gateway_id: routingDecision.gateway_id,
+        gateway_code: routingDecision.gateway_code,
+        reason: routingDecision.reason,
+      });
+
+      // ========================================================
+      // 2. CREATE PAYMENT RECORD
+      // ========================================================
+      // gateway is now available, so the NOT NULL constraint
+      // will be satisfied.
+      // ========================================================
+
       const { data: payment, error: paymentError } = await supabase
         .from('payments')
         .insert({
@@ -52,46 +91,45 @@ export class PaymentService {
           combo_booking_id: params.combo_booking_id || null,
           amount: params.amount,
           currency: params.currency || 'INR',
+
+          // IMPORTANT FIX
+          gateway: routingDecision.gateway_code,
+
+          // Keep selected_gateway in sync with gateway.
+          selected_gateway: routingDecision.gateway_code,
+
           status: 'created',
         })
         .select()
         .single();
 
       if (paymentError || !payment) {
-        console.error('[PaymentService] Failed to create payment record:', {
-          code: paymentError?.code,
-          message: paymentError?.message,
-          details: paymentError?.details,
-          hint: paymentError?.hint,
-          userId: params.user_id,
-          bookingId: params.booking_id,
-          amount: params.amount,
-        });
-        return {
-          success: false,
-          error: paymentError?.message || 'Failed to create payment record',
-        };
-      }
-
-      // 2. Select gateway using router
-      const routingDecision = await PaymentRouter.selectGateway({
-        amount: params.amount,
-        payment_method: params.payment_method,
-      });
-
-      if (!routingDecision) {
-        await supabase
-          .from('payments')
-          .update({ status: 'failed', failure_reason: 'No available gateway' })
-          .eq('id', payment.id);
+        console.error(
+          '[PaymentService] Failed to create payment record:',
+          {
+            code: paymentError?.code,
+            message: paymentError?.message,
+            details: paymentError?.details,
+            hint: paymentError?.hint,
+            userId: params.user_id,
+            bookingId: params.booking_id,
+            amount: params.amount,
+            gateway: routingDecision.gateway_code,
+          }
+        );
 
         return {
           success: false,
-          error: 'No available payment gateway',
+          error:
+            paymentError?.message ||
+            'Failed to create payment record',
         };
       }
 
-      // 3. Log routing decision
+      // ========================================================
+      // 3. LOG INITIAL ROUTING DECISION
+      // ========================================================
+
       await PaymentRouter.logRoutingDecision(
         payment.id,
         routingDecision.gateway_id,
@@ -100,17 +138,11 @@ export class PaymentService {
         1
       );
 
-      // 4. Update payment with selected gateway
-      await supabase
-        .from('payments')
-        .update({
-          selected_gateway: routingDecision.gateway_code,
-          status: 'checkout_started',
-        })
-        .eq('id', payment.id);
+      // ========================================================
+      // 4. CREATE PAYMENT ATTEMPT
+      // ========================================================
 
-      // 5. Create payment attempt record
-      const { data: attempt } = await supabase
+      const { data: attempt, error: attemptError } = await supabase
         .from('payment_attempts')
         .insert({
           payment_id: payment.id,
@@ -121,27 +153,75 @@ export class PaymentService {
         .select()
         .single();
 
-      // 6. Create order with gateway
-      const adapter = createGatewayAdapter(routingDecision.gateway_code);
-      const orderResult = await adapter.createOrder({
-        amount: params.amount,
-        currency: params.currency || 'INR',
-        payment_method: params.payment_method,
-        customer_name: params.customer_name,
-        customer_email: params.customer_email,
-        customer_phone: params.customer_phone,
-        booking_id: params.booking_id,
-        combo_booking_id: params.combo_booking_id,
-        metadata: params.metadata,
-      });
+      if (attemptError || !attempt) {
+        console.error(
+          '[PaymentService] Failed to create payment attempt:',
+          attemptError
+        );
 
-      if (!orderResult.success || !orderResult.gateway_order_id) {
-        // Order creation failed - try failover
-        console.warn('[PaymentService] Order creation failed, attempting failover');
-        return this.handleFailover(payment.id, routingDecision.gateway_id, params);
+        await supabase
+          .from('payments')
+          .update({
+            status: 'failed',
+            failure_reason: 'Failed to create payment attempt',
+          })
+          .eq('id', payment.id);
+
+        return {
+          success: false,
+          error: 'Failed to create payment attempt',
+        };
       }
 
-      // 7. Update payment attempt with gateway order ID
+      // ========================================================
+      // 5. CREATE ORDER WITH SELECTED GATEWAY
+      // ========================================================
+
+      const adapter = createGatewayAdapter(
+        routingDecision.gateway_code
+      );
+
+      const orderResult: CreateOrderResult =
+        await adapter.createOrder({
+          amount: params.amount,
+          currency: params.currency || 'INR',
+          payment_method: params.payment_method,
+          customer_name: params.customer_name,
+          customer_email: params.customer_email,
+          customer_phone: params.customer_phone,
+          booking_id: params.booking_id,
+          combo_booking_id: params.combo_booking_id,
+          metadata: params.metadata,
+        });
+
+      // ========================================================
+      // 6. HANDLE GATEWAY ORDER FAILURE
+      // ========================================================
+
+      if (
+        !orderResult.success ||
+        !orderResult.gateway_order_id
+      ) {
+        console.warn(
+          '[PaymentService] Order creation failed, attempting failover:',
+          {
+            paymentId: payment.id,
+            gateway: routingDecision.gateway_code,
+            error: orderResult.error,
+          }
+        );
+
+        return this.handleFailover(
+          payment.id,
+          routingDecision.gateway_id,
+          params
+        );
+      }
+
+      // ========================================================
+      // 7. UPDATE PAYMENT ATTEMPT
+      // ========================================================
+
       await supabase
         .from('payment_attempts')
         .update({
@@ -150,13 +230,21 @@ export class PaymentService {
         })
         .eq('id', attempt.id);
 
-      // 8. Update payment with gateway order ID
+      // ========================================================
+      // 8. UPDATE PAYMENT
+      // ========================================================
+
       await supabase
         .from('payments')
         .update({
           gateway_order_id: orderResult.gateway_order_id,
+          status: 'checkout_started',
         })
         .eq('id', payment.id);
+
+      // ========================================================
+      // 9. RETURN CHECKOUT DATA
+      // ========================================================
 
       return {
         success: true,
@@ -164,17 +252,24 @@ export class PaymentService {
         checkout_data: orderResult.checkout_data,
       };
     } catch (error: any) {
-      console.error('[PaymentService] Unexpected error:', error);
+      console.error(
+        '[PaymentService] Unexpected error:',
+        error
+      );
+
       return {
         success: false,
-        error: error.message || 'Payment creation failed',
+        error:
+          error.message ||
+          'Payment creation failed',
       };
     }
   }
 
-  /**
-   * Handle failover to next available gateway
-   */
+  // ============================================================
+  // HANDLE FAILOVER TO NEXT AVAILABLE GATEWAY
+  // ============================================================
+
   private static async handleFailover(
     paymentId: string,
     failedGatewayId: string,
@@ -182,139 +277,244 @@ export class PaymentService {
   ): Promise<CreatePaymentResult> {
     const supabase = createAdminClient();
 
-    // Get current attempt count
-    const { data: attempts } = await supabase
-      .from('payment_attempts')
-      .select('attempt_number')
-      .eq('payment_id', paymentId);
+    try {
+      // --------------------------------------------------------
+      // Get current attempt count
+      // --------------------------------------------------------
 
-    const attemptCount = attempts?.length || 0;
+      const { data: attempts } = await supabase
+        .from('payment_attempts')
+        .select('attempt_number')
+        .eq('payment_id', paymentId);
 
-    if (attemptCount >= 2) {
-      // Max attempts reached
+      const attemptCount = attempts?.length || 0;
+
+      // --------------------------------------------------------
+      // Maximum attempts reached
+      // --------------------------------------------------------
+
+      if (attemptCount >= 2) {
+        await supabase
+          .from('payments')
+          .update({
+            status: 'failed',
+            failure_reason:
+              'All payment gateways unavailable',
+          })
+          .eq('id', paymentId);
+
+        return {
+          success: false,
+          error: 'All payment gateways unavailable',
+        };
+      }
+
+      // --------------------------------------------------------
+      // Find next gateway
+      // --------------------------------------------------------
+
+      const failoverDecision =
+        await PaymentRouter.getFailoverGateway(
+          {
+            amount: params.amount,
+            payment_method: params.payment_method,
+          },
+          failedGatewayId
+        );
+
+      if (!failoverDecision) {
+        await supabase
+          .from('payments')
+          .update({
+            status: 'failed',
+            failure_reason:
+              'No fallback gateway available',
+          })
+          .eq('id', paymentId);
+
+        return {
+          success: false,
+          error: 'No fallback gateway available',
+        };
+      }
+
+      console.log(
+        '[PaymentService] Failover gateway selected:',
+        {
+          gateway_id: failoverDecision.gateway_id,
+          gateway_code:
+            failoverDecision.gateway_code,
+        }
+      );
+
+      // --------------------------------------------------------
+      // Log failover decision
+      // --------------------------------------------------------
+
+      await PaymentRouter.logRoutingDecision(
+        paymentId,
+        failoverDecision.gateway_id,
+        'failover',
+        `Previous gateway failed, trying ${failoverDecision.gateway_code}`,
+        attemptCount + 1
+      );
+
+      // --------------------------------------------------------
+      // Update payment gateway
+      // --------------------------------------------------------
+
       await supabase
         .from('payments')
         .update({
-          status: 'failed',
-          failure_reason: 'All payment gateways unavailable',
+          gateway: failoverDecision.gateway_code,
+          selected_gateway:
+            failoverDecision.gateway_code,
+        })
+        .eq('id', paymentId);
+
+      // --------------------------------------------------------
+      // Create new payment attempt
+      // --------------------------------------------------------
+
+      const { data: newAttempt, error: attemptError } =
+        await supabase
+          .from('payment_attempts')
+          .insert({
+            payment_id: paymentId,
+            gateway_id: failoverDecision.gateway_id,
+            attempt_number: attemptCount + 1,
+            status: 'started',
+          })
+          .select()
+          .single();
+
+      if (attemptError || !newAttempt) {
+        console.error(
+          '[PaymentService] Failed to create failover attempt:',
+          attemptError
+        );
+
+        await supabase
+          .from('payments')
+          .update({
+            status: 'failed',
+            failure_reason:
+              'Failed to create fallback payment attempt',
+          })
+          .eq('id', paymentId);
+
+        return {
+          success: false,
+          error:
+            'Failed to create fallback payment attempt',
+        };
+      }
+
+      // --------------------------------------------------------
+      // Create order with fallback gateway
+      // --------------------------------------------------------
+
+      const adapter = createGatewayAdapter(
+        failoverDecision.gateway_code
+      );
+
+      const orderResult: CreateOrderResult =
+        await adapter.createOrder({
+          amount: params.amount,
+          currency: params.currency || 'INR',
+          payment_method: params.payment_method,
+          customer_name: params.customer_name,
+          customer_email: params.customer_email,
+          customer_phone: params.customer_phone,
+          booking_id: params.booking_id,
+          combo_booking_id: params.combo_booking_id,
+          metadata: params.metadata,
+        });
+
+      // --------------------------------------------------------
+      // Fallback gateway also failed
+      // --------------------------------------------------------
+
+      if (
+        !orderResult.success ||
+        !orderResult.gateway_order_id
+      ) {
+        await supabase
+          .from('payments')
+          .update({
+            status: 'failed',
+            failure_reason:
+              'Fallback gateway also failed',
+          })
+          .eq('id', paymentId);
+
+        return {
+          success: false,
+          error: 'Fallback gateway also failed',
+        };
+      }
+
+      // --------------------------------------------------------
+      // Update fallback attempt
+      // --------------------------------------------------------
+
+      await supabase
+        .from('payment_attempts')
+        .update({
+          status: 'order_created',
+          gateway_order_id:
+            orderResult.gateway_order_id,
+        })
+        .eq('id', newAttempt.id);
+
+      // --------------------------------------------------------
+      // Update payment
+      // --------------------------------------------------------
+
+      await supabase
+        .from('payments')
+        .update({
+          gateway_order_id:
+            orderResult.gateway_order_id,
+          status: 'checkout_started',
         })
         .eq('id', paymentId);
 
       return {
-        success: false,
-        error: 'All payment gateways unavailable',
-      };
-    }
-
-    // Try next gateway
-    const failoverDecision = await PaymentRouter.getFailoverGateway(
-      {
-        amount: params.amount,
-        payment_method: params.payment_method,
-      },
-      failedGatewayId
-    );
-
-    if (!failoverDecision) {
-      await supabase
-        .from('payments')
-        .update({
-          status: 'failed',
-          failure_reason: 'No fallback gateway available',
-        })
-        .eq('id', paymentId);
-
-      return {
-        success: false,
-        error: 'No fallback gateway available',
-      };
-    }
-
-    // Log failover decision
-    await PaymentRouter.logRoutingDecision(
-      paymentId,
-      failoverDecision.gateway_id,
-      'failover',
-      `Previous gateway failed, trying ${failoverDecision.gateway_code}`,
-      attemptCount + 1
-    );
-
-    // Update payment with new gateway
-    await supabase
-      .from('payments')
-      .update({
-        selected_gateway: failoverDecision.gateway_code,
-      })
-      .eq('id', paymentId);
-
-    // Create new attempt
-    const { data: newAttempt } = await supabase
-      .from('payment_attempts')
-      .insert({
+        success: true,
         payment_id: paymentId,
-        gateway_id: failoverDecision.gateway_id,
-        attempt_number: attemptCount + 1,
-        status: 'started',
-      })
-      .select()
-      .single();
+        checkout_data:
+          orderResult.checkout_data,
+      };
+    } catch (error: any) {
+      console.error(
+        '[PaymentService] Failover error:',
+        error
+      );
 
-    // Create order with fallback gateway
-    const adapter = createGatewayAdapter(failoverDecision.gateway_code);
-    const orderResult = await adapter.createOrder({
-      amount: params.amount,
-      currency: params.currency || 'INR',
-      payment_method: params.payment_method,
-      customer_name: params.customer_name,
-      customer_email: params.customer_email,
-      customer_phone: params.customer_phone,
-      booking_id: params.booking_id,
-      combo_booking_id: params.combo_booking_id,
-      metadata: params.metadata,
-    });
-
-    if (!orderResult.success || !orderResult.gateway_order_id) {
       await supabase
         .from('payments')
         .update({
           status: 'failed',
-          failure_reason: 'Fallback gateway also failed',
+          failure_reason:
+            error.message ||
+            'Payment failover failed',
         })
         .eq('id', paymentId);
 
       return {
         success: false,
-        error: 'Fallback gateway also failed',
+        error:
+          error.message ||
+          'Payment failover failed',
       };
     }
-
-    // Update attempt
-    await supabase
-      .from('payment_attempts')
-      .update({
-        status: 'order_created',
-        gateway_order_id: orderResult.gateway_order_id,
-      })
-      .eq('id', newAttempt.id);
-
-    // Update payment
-    await supabase
-      .from('payments')
-      .update({
-        gateway_order_id: orderResult.gateway_order_id,
-      })
-      .eq('id', paymentId);
-
-    return {
-      success: true,
-      payment_id: paymentId,
-      checkout_data: orderResult.checkout_data,
-    };
   }
 
-  /**
-   * Process successful payment
-   */
+  // ============================================================
+  // PROCESS SUCCESSFUL PAYMENT
+  // ============================================================
+
   static async processSuccessfulPayment(
     paymentId: string,
     gatewayPaymentId: string,
@@ -330,7 +530,10 @@ export class PaymentService {
       .single();
 
     if (!payment) {
-      console.error('[PaymentService] Payment not found:', paymentId);
+      console.error(
+        '[PaymentService] Payment not found:',
+        paymentId
+      );
       return;
     }
 
@@ -353,7 +556,9 @@ export class PaymentService {
       })
       .eq('payment_id', paymentId)
       .eq('status', 'order_created')
-      .order('attempt_number', { ascending: false })
+      .order('attempt_number', {
+        ascending: false,
+      })
       .limit(1);
 
     // Update gateway usage
@@ -371,18 +576,23 @@ export class PaymentService {
       });
     }
 
-    // Update booking/combo booking status
+    // Update booking status
     if (payment.booking_id) {
       await supabase
         .from('bookings')
-        .update({ payment_status: 'paid' })
+        .update({
+          payment_status: 'paid',
+        })
         .eq('id', payment.booking_id);
     }
 
+    // Update combo booking status
     if (payment.combo_booking_id) {
       await supabase
         .from('combo_bookings')
-        .update({ payment_status: 'paid' })
+        .update({
+          payment_status: 'paid',
+        })
         .eq('id', payment.combo_booking_id);
     }
 
@@ -390,19 +600,29 @@ export class PaymentService {
     try {
       await createNotificationServer({
         userId: payment.user_id,
-        bookingId: payment.booking_id || payment.combo_booking_id || undefined,
+        bookingId:
+          payment.booking_id ||
+          payment.combo_booking_id ||
+          undefined,
         title: 'Payment Successful! 💳',
-        message: `Your payment of ₹${payment.amount} was successful. ${payment.booking_id ? 'Booking confirmed.' : 'Combo booking confirmed.'}`,
+        message: `Your payment of ₹${payment.amount} was successful. ${payment.booking_id
+          ? 'Booking confirmed.'
+          : 'Combo booking confirmed.'
+          }`,
         type: 'booking_confirmed',
       });
     } catch (notifyErr) {
-      console.warn('[PaymentService] Failed to send payment success notification:', notifyErr);
+      console.warn(
+        '[PaymentService] Failed to send payment success notification:',
+        notifyErr
+      );
     }
   }
 
-  /**
-   * Process failed payment
-   */
+  // ============================================================
+  // PROCESS FAILED PAYMENT
+  // ============================================================
+
   static async processFailedPayment(
     paymentId: string,
     reason: string
@@ -417,7 +637,10 @@ export class PaymentService {
       .single();
 
     if (!payment) {
-      console.error('[PaymentService] Payment not found:', paymentId);
+      console.error(
+        '[PaymentService] Payment not found:',
+        paymentId
+      );
       return;
     }
 
@@ -441,7 +664,9 @@ export class PaymentService {
       })
       .eq('payment_id', paymentId)
       .eq('status', 'order_created')
-      .order('attempt_number', { ascending: false })
+      .order('attempt_number', {
+        ascending: false,
+      })
       .limit(1);
 
     // Update gateway usage
@@ -465,21 +690,29 @@ export class PaymentService {
     try {
       await createNotificationServer({
         userId: payment.user_id,
-        bookingId: payment.booking_id || payment.combo_booking_id || undefined,
+        bookingId:
+          payment.booking_id ||
+          payment.combo_booking_id ||
+          undefined,
         title: 'Payment Failed ❌',
         message: `Your payment of ₹${payment.amount} failed. Reason: ${reason}. Please try again or use a different payment method.`,
         type: 'booking_rejected',
       });
     } catch (notifyErr) {
-      console.warn('[PaymentService] Failed to send payment failed notification:', notifyErr);
+      console.warn(
+        '[PaymentService] Failed to send payment failed notification:',
+        notifyErr
+      );
     }
   }
 
-  /**
-   * Get payment by ID
-   */
+  // ============================================================
+  // GET PAYMENT BY ID
+  // ============================================================
+
   static async getPayment(paymentId: string) {
     const supabase = createAdminClient();
+
     const { data, error } = await supabase
       .from('payments')
       .select('*')
@@ -487,26 +720,36 @@ export class PaymentService {
       .single();
 
     if (error) {
-      console.error('[PaymentService] Failed to get payment:', error);
+      console.error(
+        '[PaymentService] Failed to get payment:',
+        error
+      );
       return null;
     }
 
     return data;
   }
 
-  /**
-   * Get payment attempts for a payment
-   */
+  // ============================================================
+  // GET PAYMENT ATTEMPTS
+  // ============================================================
+
   static async getPaymentAttempts(paymentId: string) {
     const supabase = createAdminClient();
+
     const { data, error } = await supabase
       .from('payment_attempts')
       .select('*, gateway:payment_gateways(*)')
       .eq('payment_id', paymentId)
-      .order('attempt_number', { ascending: true });
+      .order('attempt_number', {
+        ascending: true,
+      });
 
     if (error) {
-      console.error('[PaymentService] Failed to get payment attempts:', error);
+      console.error(
+        '[PaymentService] Failed to get payment attempts:',
+        error
+      );
       return [];
     }
 

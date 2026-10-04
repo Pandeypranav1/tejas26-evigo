@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS public.payments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   booking_id UUID REFERENCES public.bookings(id) ON DELETE SET NULL,
-  combo_booking_id UUID REFERENCES public.combo_bookings(id) ON DELETE SET NULL,
+  combo_booking_id UUID REFERENCES public.combo_booking(id) ON DELETE SET NULL,,
   amount NUMERIC NOT NULL CHECK (amount >= 0),
   currency TEXT NOT NULL DEFAULT 'INR',
   status TEXT NOT NULL DEFAULT 'created' CHECK (status IN (
