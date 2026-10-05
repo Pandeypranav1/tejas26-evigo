@@ -9,6 +9,7 @@ import { createGatewayAdapter } from './adapters';
 import { createNotificationServer } from '@/lib/notifications';
 
 import {
+  PaymentStatus,
   PaymentMethod,
   GatewayCode,
   CreateOrderResult,
@@ -35,10 +36,9 @@ export interface CreatePaymentResult {
 }
 
 export class PaymentService {
-  // ============================================================
-  // CREATE PAYMENT
-  // ============================================================
-
+  /**
+   * Create a payment and route to appropriate gateway
+   */
   static async createPayment(
     params: CreatePaymentParams
   ): Promise<CreatePaymentResult> {
@@ -49,11 +49,10 @@ export class PaymentService {
       // 1. SELECT GATEWAY FIRST
       // ========================================================
 
-      const routingDecision =
-        await PaymentRouter.selectGateway({
-          amount: params.amount,
-          payment_method: params.payment_method,
-        });
+      const routingDecision = await PaymentRouter.selectGateway({
+        amount: params.amount,
+        payment_method: params.payment_method,
+      });
 
       if (!routingDecision) {
         console.error(
@@ -66,43 +65,31 @@ export class PaymentService {
         };
       }
 
-      console.log(
-        '[PaymentService] Gateway selected:',
-        {
-          gateway_id: routingDecision.gateway_id,
-          gateway_code:
-            routingDecision.gateway_code,
-          reason: routingDecision.reason,
-        }
-      );
+      console.log('[PaymentService] Gateway selected:', {
+        gateway_id: routingDecision.gateway_id,
+        gateway_code: routingDecision.gateway_code,
+        reason: routingDecision.reason,
+      });
 
       // ========================================================
       // 2. CREATE PAYMENT RECORD
       // ========================================================
 
-      const {
-        data: payment,
-        error: paymentError,
-      } = await supabase
+      const { data: payment, error: paymentError } = await supabase
         .from('payments')
         .insert({
           user_id: params.user_id,
-          booking_id:
-            params.booking_id || null,
-          combo_booking_id:
-            params.combo_booking_id || null,
+          booking_id: params.booking_id || null,
+          combo_booking_id: params.combo_booking_id || null,
+
           amount: params.amount,
-          currency:
-            params.currency || 'INR',
+          currency: params.currency || 'INR',
 
-          // IMPORTANT:
-          // payments.gateway is NOT NULL.
-          gateway:
-            routingDecision.gateway_code,
+          // Gateway is NOT NULL in the live DB.
+          gateway: routingDecision.gateway_code,
 
-          // Keep both fields synchronized.
-          selected_gateway:
-            routingDecision.gateway_code,
+          // Keep selected_gateway in sync with gateway.
+          selected_gateway: routingDecision.gateway_code,
 
           status: 'created',
         })
@@ -120,8 +107,7 @@ export class PaymentService {
             userId: params.user_id,
             bookingId: params.booking_id,
             amount: params.amount,
-            gateway:
-              routingDecision.gateway_code,
+            gateway: routingDecision.gateway_code,
           }
         );
 
@@ -149,22 +135,25 @@ export class PaymentService {
       // 4. CREATE PAYMENT ATTEMPT
       // ========================================================
 
-      const {
-        data: attempt,
-        error: attemptError,
-      } = await supabase
+      /*
+       * IMPORTANT FIX:
+       *
+       * The live payment_attempts table has amount as NOT NULL.
+       * Therefore amount and currency must be inserted here.
+       */
+
+      const { data: attempt, error: attemptError } = await supabase
         .from('payment_attempts')
         .insert({
           payment_id: payment.id,
 
-          // IMPORTANT:
-          // payment_attempts.gateway is NOT NULL.
-          gateway:
-            routingDecision.gateway_code,
+          // Gateway information
+          gateway: routingDecision.gateway_code,
+          gateway_id: routingDecision.gateway_id,
 
-          // Keep gateway UUID too.
-          gateway_id:
-            routingDecision.gateway_id,
+          // REQUIRED by live DB schema
+          amount: payment.amount,
+          currency: payment.currency || 'INR',
 
           attempt_number: 1,
           status: 'started',
@@ -175,21 +164,30 @@ export class PaymentService {
       if (attemptError || !attempt) {
         console.error(
           '[PaymentService] Failed to create payment attempt:',
-          attemptError
+          {
+            code: attemptError?.code,
+            message: attemptError?.message,
+            details: attemptError?.details,
+            hint: attemptError?.hint,
+            paymentId: payment.id,
+            amount: payment.amount,
+            currency: payment.currency,
+            gateway: routingDecision.gateway_code,
+          }
         );
 
         await supabase
           .from('payments')
           .update({
             status: 'failed',
-            failure_reason:
-              'Failed to create payment attempt',
+            failure_reason: 'Failed to create payment attempt',
           })
           .eq('id', payment.id);
 
         return {
           success: false,
           error:
+            attemptError?.message ||
             'Failed to create payment attempt',
         };
       }
@@ -205,22 +203,14 @@ export class PaymentService {
       const orderResult: CreateOrderResult =
         await adapter.createOrder({
           amount: params.amount,
-          currency:
-            params.currency || 'INR',
-          payment_method:
-            params.payment_method,
-          customer_name:
-            params.customer_name,
-          customer_email:
-            params.customer_email,
-          customer_phone:
-            params.customer_phone,
-          booking_id:
-            params.booking_id,
-          combo_booking_id:
-            params.combo_booking_id,
-          metadata:
-            params.metadata,
+          currency: params.currency || 'INR',
+          payment_method: params.payment_method,
+          customer_name: params.customer_name,
+          customer_email: params.customer_email,
+          customer_phone: params.customer_phone,
+          booking_id: params.booking_id,
+          combo_booking_id: params.combo_booking_id,
+          metadata: params.metadata,
         });
 
       // ========================================================
@@ -235,8 +225,7 @@ export class PaymentService {
           '[PaymentService] Order creation failed, attempting failover:',
           {
             paymentId: payment.id,
-            gateway:
-              routingDecision.gateway_code,
+            gateway: routingDecision.gateway_code,
             error: orderResult.error,
           }
         );
@@ -256,8 +245,7 @@ export class PaymentService {
         .from('payment_attempts')
         .update({
           status: 'order_created',
-          gateway_order_id:
-            orderResult.gateway_order_id,
+          gateway_order_id: orderResult.gateway_order_id,
         })
         .eq('id', attempt.id);
 
@@ -268,8 +256,7 @@ export class PaymentService {
       await supabase
         .from('payments')
         .update({
-          gateway_order_id:
-            orderResult.gateway_order_id,
+          gateway_order_id: orderResult.gateway_order_id,
           status: 'checkout_started',
         })
         .eq('id', payment.id);
@@ -281,8 +268,7 @@ export class PaymentService {
       return {
         success: true,
         payment_id: payment.id,
-        checkout_data:
-          orderResult.checkout_data,
+        checkout_data: orderResult.checkout_data,
       };
     } catch (error: any) {
       console.error(
@@ -315,14 +301,12 @@ export class PaymentService {
       // Get current attempt count
       // --------------------------------------------------------
 
-      const { data: attempts } =
-        await supabase
-          .from('payment_attempts')
-          .select('attempt_number')
-          .eq('payment_id', paymentId);
+      const { data: attempts } = await supabase
+        .from('payment_attempts')
+        .select('attempt_number')
+        .eq('payment_id', paymentId);
 
-      const attemptCount =
-        attempts?.length || 0;
+      const attemptCount = attempts?.length || 0;
 
       // --------------------------------------------------------
       // Maximum attempts reached
@@ -340,8 +324,7 @@ export class PaymentService {
 
         return {
           success: false,
-          error:
-            'All payment gateways unavailable',
+          error: 'All payment gateways unavailable',
         };
       }
 
@@ -353,8 +336,7 @@ export class PaymentService {
         await PaymentRouter.getFailoverGateway(
           {
             amount: params.amount,
-            payment_method:
-              params.payment_method,
+            payment_method: params.payment_method,
           },
           failedGatewayId
         );
@@ -371,16 +353,14 @@ export class PaymentService {
 
         return {
           success: false,
-          error:
-            'No fallback gateway available',
+          error: 'No fallback gateway available',
         };
       }
 
       console.log(
         '[PaymentService] Failover gateway selected:',
         {
-          gateway_id:
-            failoverDecision.gateway_id,
+          gateway_id: failoverDecision.gateway_id,
           gateway_code:
             failoverDecision.gateway_code,
         }
@@ -405,8 +385,7 @@ export class PaymentService {
       await supabase
         .from('payments')
         .update({
-          gateway:
-            failoverDecision.gateway_code,
+          gateway: failoverDecision.gateway_code,
           selected_gateway:
             failoverDecision.gateway_code,
         })
@@ -416,34 +395,48 @@ export class PaymentService {
       // Create new payment attempt
       // --------------------------------------------------------
 
-      const {
-        data: newAttempt,
-        error: attemptError,
-      } = await supabase
-        .from('payment_attempts')
-        .insert({
-          payment_id: paymentId,
+      /*
+       * IMPORTANT FIX:
+       *
+       * The live payment_attempts table has amount as NOT NULL.
+       * Therefore amount and currency must also be supplied
+       * for failover attempts.
+       */
 
-          // IMPORTANT:
-          // payment_attempts.gateway is required.
-          gateway:
-            failoverDecision.gateway_code,
+      const { data: newAttempt, error: attemptError } =
+        await supabase
+          .from('payment_attempts')
+          .insert({
+            payment_id: paymentId,
 
-          gateway_id:
-            failoverDecision.gateway_id,
+            // Gateway information
+            gateway: failoverDecision.gateway_code,
+            gateway_id: failoverDecision.gateway_id,
 
-          attempt_number:
-            attemptCount + 1,
+            // REQUIRED by live DB schema
+            amount: params.amount,
+            currency: params.currency || 'INR',
 
-          status: 'started',
-        })
-        .select()
-        .single();
+            attempt_number: attemptCount + 1,
+            status: 'started',
+          })
+          .select()
+          .single();
 
       if (attemptError || !newAttempt) {
         console.error(
           '[PaymentService] Failed to create failover attempt:',
-          attemptError
+          {
+            code: attemptError?.code,
+            message: attemptError?.message,
+            details: attemptError?.details,
+            hint: attemptError?.hint,
+            paymentId,
+            amount: params.amount,
+            currency: params.currency || 'INR',
+            gateway:
+              failoverDecision.gateway_code,
+          }
         );
 
         await supabase
@@ -458,6 +451,7 @@ export class PaymentService {
         return {
           success: false,
           error:
+            attemptError?.message ||
             'Failed to create fallback payment attempt',
         };
       }
@@ -473,22 +467,14 @@ export class PaymentService {
       const orderResult: CreateOrderResult =
         await adapter.createOrder({
           amount: params.amount,
-          currency:
-            params.currency || 'INR',
-          payment_method:
-            params.payment_method,
-          customer_name:
-            params.customer_name,
-          customer_email:
-            params.customer_email,
-          customer_phone:
-            params.customer_phone,
-          booking_id:
-            params.booking_id,
-          combo_booking_id:
-            params.combo_booking_id,
-          metadata:
-            params.metadata,
+          currency: params.currency || 'INR',
+          payment_method: params.payment_method,
+          customer_name: params.customer_name,
+          customer_email: params.customer_email,
+          customer_phone: params.customer_phone,
+          booking_id: params.booking_id,
+          combo_booking_id: params.combo_booking_id,
+          metadata: params.metadata,
         });
 
       // --------------------------------------------------------
@@ -510,8 +496,7 @@ export class PaymentService {
 
         return {
           success: false,
-          error:
-            'Fallback gateway also failed',
+          error: 'Fallback gateway also failed',
         };
       }
 
@@ -584,19 +569,17 @@ export class PaymentService {
     const supabase = createAdminClient();
 
     // Get payment details
-    const { data: payment } =
-      await supabase
-        .from('payments')
-        .select('*')
-        .eq('id', paymentId)
-        .single();
+    const { data: payment } = await supabase
+      .from('payments')
+      .select('*')
+      .eq('id', paymentId)
+      .single();
 
     if (!payment) {
       console.error(
         '[PaymentService] Payment not found:',
         paymentId
       );
-
       return;
     }
 
@@ -605,10 +588,8 @@ export class PaymentService {
       .from('payments')
       .update({
         status: 'success',
-        gateway_payment_id:
-          gatewayPaymentId,
-        paid_at:
-          new Date().toISOString(),
+        gateway_payment_id: gatewayPaymentId,
+        paid_at: new Date().toISOString(),
       })
       .eq('id', paymentId);
 
@@ -617,8 +598,7 @@ export class PaymentService {
       .from('payment_attempts')
       .update({
         status: 'success',
-        completed_at:
-          new Date().toISOString(),
+        completed_at: new Date().toISOString(),
       })
       .eq('payment_id', paymentId)
       .eq('status', 'order_created')
@@ -628,22 +608,18 @@ export class PaymentService {
       .limit(1);
 
     // Update gateway usage
-    const { data: gateway } =
-      await supabase
-        .from('payment_gateways')
-        .select('id')
-        .eq('code', gatewayCode)
-        .single();
+    const { data: gateway } = await supabase
+      .from('payment_gateways')
+      .select('id')
+      .eq('code', gatewayCode)
+      .single();
 
     if (gateway) {
-      await supabase.rpc(
-        'update_gateway_usage',
-        {
-          p_gateway_id: gateway.id,
-          p_amount: payment.amount,
-          p_success: true,
-        }
-      );
+      await supabase.rpc('update_gateway_usage', {
+        p_gateway_id: gateway.id,
+        p_amount: payment.amount,
+        p_success: true,
+      });
     }
 
     // Update booking status
@@ -663,31 +639,22 @@ export class PaymentService {
         .update({
           payment_status: 'paid',
         })
-        .eq(
-          'id',
-          payment.combo_booking_id
-        );
+        .eq('id', payment.combo_booking_id);
     }
 
     // Send payment success notification
     try {
       await createNotificationServer({
         userId: payment.user_id,
-
         bookingId:
           payment.booking_id ||
           payment.combo_booking_id ||
           undefined,
-
-        title:
-          'Payment Successful! 💳',
-
-        message:
-          `Your payment of ₹${payment.amount} was successful. ${payment.booking_id
-            ? 'Booking confirmed.'
-            : 'Combo booking confirmed.'
+        title: 'Payment Successful! 💳',
+        message: `Your payment of ₹${payment.amount} was successful. ${payment.booking_id
+          ? 'Booking confirmed.'
+          : 'Combo booking confirmed.'
           }`,
-
         type: 'booking_confirmed',
       });
     } catch (notifyErr) {
@@ -709,19 +676,17 @@ export class PaymentService {
     const supabase = createAdminClient();
 
     // Get payment details
-    const { data: payment } =
-      await supabase
-        .from('payments')
-        .select('*')
-        .eq('id', paymentId)
-        .single();
+    const { data: payment } = await supabase
+      .from('payments')
+      .select('*')
+      .eq('id', paymentId)
+      .single();
 
     if (!payment) {
       console.error(
         '[PaymentService] Payment not found:',
         paymentId
       );
-
       return;
     }
 
@@ -731,8 +696,7 @@ export class PaymentService {
       .update({
         status: 'failed',
         failure_reason: reason,
-        failed_at:
-          new Date().toISOString(),
+        failed_at: new Date().toISOString(),
       })
       .eq('id', paymentId);
 
@@ -742,8 +706,7 @@ export class PaymentService {
       .update({
         status: 'failed',
         error_message: reason,
-        completed_at:
-          new Date().toISOString(),
+        completed_at: new Date().toISOString(),
       })
       .eq('payment_id', paymentId)
       .eq('status', 'order_created')
@@ -754,25 +717,18 @@ export class PaymentService {
 
     // Update gateway usage
     if (payment.selected_gateway) {
-      const { data: gateway } =
-        await supabase
-          .from('payment_gateways')
-          .select('id')
-          .eq(
-            'code',
-            payment.selected_gateway
-          )
-          .single();
+      const { data: gateway } = await supabase
+        .from('payment_gateways')
+        .select('id')
+        .eq('code', payment.selected_gateway)
+        .single();
 
       if (gateway) {
-        await supabase.rpc(
-          'update_gateway_usage',
-          {
-            p_gateway_id: gateway.id,
-            p_amount: payment.amount,
-            p_success: false,
-          }
-        );
+        await supabase.rpc('update_gateway_usage', {
+          p_gateway_id: gateway.id,
+          p_amount: payment.amount,
+          p_success: false,
+        });
       }
     }
 
@@ -780,18 +736,12 @@ export class PaymentService {
     try {
       await createNotificationServer({
         userId: payment.user_id,
-
         bookingId:
           payment.booking_id ||
           payment.combo_booking_id ||
           undefined,
-
-        title:
-          'Payment Failed ❌',
-
-        message:
-          `Your payment of ₹${payment.amount} failed. Reason: ${reason}. Please try again or use a different payment method.`,
-
+        title: 'Payment Failed ❌',
+        message: `Your payment of ₹${payment.amount} failed. Reason: ${reason}. Please try again or use a different payment method.`,
         type: 'booking_rejected',
       });
     } catch (notifyErr) {
@@ -806,24 +756,20 @@ export class PaymentService {
   // GET PAYMENT BY ID
   // ============================================================
 
-  static async getPayment(
-    paymentId: string
-  ) {
+  static async getPayment(paymentId: string) {
     const supabase = createAdminClient();
 
-    const { data, error } =
-      await supabase
-        .from('payments')
-        .select('*')
-        .eq('id', paymentId)
-        .single();
+    const { data, error } = await supabase
+      .from('payments')
+      .select('*')
+      .eq('id', paymentId)
+      .single();
 
     if (error) {
       console.error(
         '[PaymentService] Failed to get payment:',
         error
       );
-
       return null;
     }
 
@@ -834,28 +780,22 @@ export class PaymentService {
   // GET PAYMENT ATTEMPTS
   // ============================================================
 
-  static async getPaymentAttempts(
-    paymentId: string
-  ) {
+  static async getPaymentAttempts(paymentId: string) {
     const supabase = createAdminClient();
 
-    const { data, error } =
-      await supabase
-        .from('payment_attempts')
-        .select(
-          '*, gateway:payment_gateways(*)'
-        )
-        .eq('payment_id', paymentId)
-        .order('attempt_number', {
-          ascending: true,
-        });
+    const { data, error } = await supabase
+      .from('payment_attempts')
+      .select('*, gateway:payment_gateways(*)')
+      .eq('payment_id', paymentId)
+      .order('attempt_number', {
+        ascending: true,
+      });
 
     if (error) {
       console.error(
         '[PaymentService] Failed to get payment attempts:',
         error
       );
-
       return [];
     }
 
