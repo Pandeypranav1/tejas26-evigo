@@ -1,3 +1,8 @@
+// ============================================================
+// Payment Router Service
+// Handles intelligent gateway selection with failover
+// ============================================================
+
 import { createAdminClient } from '@/lib/supabase';
 
 import {
@@ -14,25 +19,47 @@ export interface RouterContext {
 }
 
 export class PaymentRouter {
+  /**
+   * Select the best payment gateway.
+   *
+   * Routing priority:
+   * 1. Active gateway
+   * 2. Gateway not in maintenance
+   * 3. Requested payment method supported
+   * 4. Per-transaction limit
+   * 5. Daily transaction capacity
+   * 6. Gateway priority
+   * 7. Lower daily usage
+   */
   static async selectGateway(
     context: RouterContext
   ): Promise<RoutingDecision | null> {
     const supabase = createAdminClient();
 
     try {
-      const { data: selectedGatewayId, error: rpcError } = await supabase
-        .rpc('select_best_gateway', {
+      // --------------------------------------------------------
+      // First try the database routing function.
+      // --------------------------------------------------------
+
+      const { data: selectedGatewayId, error: rpcError } =
+        await supabase.rpc('select_best_gateway', {
           p_amount: context.amount,
           p_payment_method: context.payment_method,
         });
 
       if (!rpcError && selectedGatewayId) {
-        if (!context.exclude_gateway_ids?.includes(selectedGatewayId)) {
-          const { data: gateway, error: gatewayError } = await supabase
-            .from('payment_gateways')
-            .select('*')
-            .eq('id', selectedGatewayId)
-            .single();
+        // Do not use an excluded gateway.
+        if (
+          !context.exclude_gateway_ids?.includes(
+            selectedGatewayId
+          )
+        ) {
+          const { data: gateway, error: gatewayError } =
+            await supabase
+              .from('payment_gateways')
+              .select('*')
+              .eq('id', selectedGatewayId)
+              .single();
 
           if (!gatewayError && gateway) {
             return {
@@ -45,6 +72,10 @@ export class PaymentRouter {
         }
       }
 
+      // --------------------------------------------------------
+      // Fallback routing
+      // --------------------------------------------------------
+
       if (rpcError) {
         console.error(
           '[PaymentRouter] select_best_gateway RPC error:',
@@ -54,12 +85,18 @@ export class PaymentRouter {
 
       return await this.selectGatewayFallback(context);
     } catch (error) {
-      console.error('[PaymentRouter] selectGateway error:', error);
+      console.error(
+        '[PaymentRouter] selectGateway error:',
+        error
+      );
 
       return await this.selectGatewayFallback(context);
     }
   }
 
+  /**
+   * Application-level fallback gateway selection.
+   */
   private static async selectGatewayFallback(
     context: RouterContext
   ): Promise<RoutingDecision | null> {
@@ -73,7 +110,11 @@ export class PaymentRouter {
         .eq('in_maintenance', false)
         .order('priority', { ascending: true });
 
-      if (error || !gateways || gateways.length === 0) {
+      if (
+        error ||
+        !gateways ||
+        gateways.length === 0
+      ) {
         console.error(
           '[PaymentRouter] No active gateways available:',
           error
@@ -84,11 +125,15 @@ export class PaymentRouter {
 
       const availableGateways = gateways.filter(
         (gateway) =>
-          !context.exclude_gateway_ids?.includes(gateway.id)
+          !context.exclude_gateway_ids?.includes(
+            gateway.id
+          )
       );
 
       if (availableGateways.length === 0) {
-        console.error('[PaymentRouter] All gateways are excluded');
+        console.error(
+          '[PaymentRouter] All gateways are excluded'
+        );
 
         return null;
       }
@@ -119,10 +164,17 @@ export class PaymentRouter {
     }
   }
 
+  /**
+   * Evaluate a single gateway.
+   */
   private static async evaluateGateway(
     gateway: GatewayConfig,
     context: RouterContext
   ): Promise<RoutingDecision | null> {
+    // --------------------------------------------------------
+    // 1. Payment method support
+    // --------------------------------------------------------
+
     if (
       !this.supportsPaymentMethod(
         gateway,
@@ -131,6 +183,10 @@ export class PaymentRouter {
     ) {
       return null;
     }
+
+    // --------------------------------------------------------
+    // 2. Per transaction limit
+    // --------------------------------------------------------
 
     if (
       gateway.per_transaction_limit != null &&
@@ -143,10 +199,15 @@ export class PaymentRouter {
       return null;
     }
 
-    const hasCapacity = await this.checkDailyCapacity(
-      gateway,
-      context.amount
-    );
+    // --------------------------------------------------------
+    // 3. Daily capacity
+    // --------------------------------------------------------
+
+    const hasCapacity =
+      await this.checkDailyCapacity(
+        gateway,
+        context.amount
+      );
 
     if (!hasCapacity) {
       console.log(
@@ -156,6 +217,10 @@ export class PaymentRouter {
       return null;
     }
 
+    // --------------------------------------------------------
+    // Gateway passed all checks
+    // --------------------------------------------------------
+
     return {
       gateway_id: gateway.id,
       gateway_code: gateway.code as GatewayCode,
@@ -164,6 +229,9 @@ export class PaymentRouter {
     };
   }
 
+  /**
+   * Check whether a gateway supports a payment method.
+   */
   private static supportsPaymentMethod(
     gateway: GatewayConfig,
     method: PaymentMethod
@@ -189,6 +257,9 @@ export class PaymentRouter {
     }
   }
 
+  /**
+   * Check daily gateway capacity.
+   */
   private static async checkDailyCapacity(
     gateway: GatewayConfig,
     amount: number
@@ -196,14 +267,20 @@ export class PaymentRouter {
     const supabase = createAdminClient();
 
     try {
-      const { data: gatewayConfig, error: gatewayError } =
-        await supabase
-          .from('payment_gateways')
-          .select(
-            'code, daily_limit, warning_threshold, per_transaction_limit, is_active, in_maintenance'
-          )
-          .eq('id', gateway.id)
-          .single();
+      // --------------------------------------------------------
+      // Get gateway limits
+      // --------------------------------------------------------
+
+      const {
+        data: gatewayConfig,
+        error: gatewayError,
+      } = await supabase
+        .from('payment_gateways')
+        .select(
+          'code, daily_limit, warning_threshold, per_transaction_limit, is_active, in_maintenance'
+        )
+        .eq('id', gateway.id)
+        .single();
 
       if (gatewayError || !gatewayConfig) {
         console.error(
@@ -214,6 +291,7 @@ export class PaymentRouter {
         return false;
       }
 
+      // Gateway must be active and not under maintenance.
       if (
         gatewayConfig.is_active !== true ||
         gatewayConfig.in_maintenance === true
@@ -221,6 +299,7 @@ export class PaymentRouter {
         return false;
       }
 
+      // No daily limit configured.
       if (
         gatewayConfig.daily_limit == null ||
         Number(gatewayConfig.daily_limit) <= 0
@@ -228,14 +307,23 @@ export class PaymentRouter {
         return true;
       }
 
-      const today = new Date().toISOString().split('T')[0];
+      // --------------------------------------------------------
+      // Get today's usage
+      // --------------------------------------------------------
 
-      const { data: usage, error: usageError } = await supabase
+      const today = new Date()
+        .toISOString()
+        .split('T')[0];
+
+      const {
+        data: usage,
+        error: usageError,
+      } = await supabase
         .from('payment_gateway_usage')
         .select(
-          'gateway_id, usage_date, transaction_count, successful_amount, failed_amount'
+          'gateway, usage_date, transaction_count, total_amount'
         )
-        .eq('gateway_id', gateway.id)
+        .eq('gateway', gateway.code)
         .eq('usage_date', today)
         .maybeSingle();
 
@@ -248,12 +336,21 @@ export class PaymentRouter {
         return false;
       }
 
-      const usedAmount =
-        Number(usage?.successful_amount ?? 0) +
-        Number(usage?.failed_amount ?? 0);
+      // No usage row means zero usage today.
+      const usedAmount = Number(
+        usage?.total_amount ?? 0
+      );
 
-      const dailyLimit = Number(gatewayConfig.daily_limit);
-      const remainingCapacity = dailyLimit - usedAmount;
+      const dailyLimit = Number(
+        gatewayConfig.daily_limit
+      );
+
+      const remainingCapacity =
+        dailyLimit - usedAmount;
+
+      // --------------------------------------------------------
+      // Requested payment must fit
+      // --------------------------------------------------------
 
       if (remainingCapacity < amount) {
         console.log(
@@ -264,9 +361,14 @@ export class PaymentRouter {
         return false;
       }
 
+      // --------------------------------------------------------
+      // Warning threshold
+      // --------------------------------------------------------
+
       if (
         gatewayConfig.warning_threshold != null &&
-        remainingCapacity < Number(gatewayConfig.warning_threshold)
+        remainingCapacity <
+        Number(gatewayConfig.warning_threshold)
       ) {
         console.warn(
           `[PaymentRouter] Gateway ${gateway.code} is below warning threshold. ` +
@@ -285,6 +387,23 @@ export class PaymentRouter {
     }
   }
 
+  /**
+   * Log routing decision for audit.
+   *
+   * IMPORTANT:
+   * payment_routing_logs uses:
+   * - payment_id
+   * - gateway
+   * - action
+   * - reason
+   * - success
+   * - metadata
+   * - attempt_number
+   *
+   * It does NOT use:
+   * - gateway_id
+   * - decision_type
+   */
   static async logRoutingDecision(
     paymentId: string,
     gatewayId: string,
@@ -299,25 +418,35 @@ export class PaymentRouter {
     const supabase = createAdminClient();
 
     try {
-      const { data: gatewayRow, error: gatewayLookupError } =
-        await supabase
-          .from('payment_gateways')
-          .select('code')
-          .eq('id', gatewayId)
-          .maybeSingle();
+      // Resolve gateway UUID to gateway code.
+      const {
+        data: gatewayRow,
+        error: gatewayLookupError,
+      } = await supabase
+        .from('payment_gateways')
+        .select('code')
+        .eq('id', gatewayId)
+        .maybeSingle();
 
       if (gatewayLookupError) {
         console.error(
-          '[PaymentRouter] Failed to resolve gateway code for routing log:',
+          '[PaymentRouter] Failed to resolve gateway code:',
           gatewayLookupError
         );
+
+        return;
       }
 
+      const gatewayCode =
+        gatewayRow?.code ?? gatewayId;
+
+      // IMPORTANT:
+      // Use the actual columns present in payment_routing_logs.
       const { error } = await supabase
         .from('payment_routing_logs')
         .insert({
           payment_id: paymentId,
-          gateway: gatewayRow?.code ?? gatewayId,
+          gateway: gatewayCode,
           action: decisionType,
           reason,
           success: true,
@@ -343,6 +472,11 @@ export class PaymentRouter {
     }
   }
 
+  /**
+   * Get next available gateway for failover.
+   *
+   * The previous gateway is excluded.
+   */
   static async getFailoverGateway(
     context: RouterContext,
     previousGatewayId: string
