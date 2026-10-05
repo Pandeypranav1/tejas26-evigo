@@ -1,15 +1,9 @@
-// ============================================================
-// Payment Orchestration Service
-// Central service for payment creation, verification, and failover
-// ============================================================
-
 import { createAdminClient } from '@/lib/supabase';
 import { PaymentRouter } from './router';
 import { createGatewayAdapter } from './adapters';
 import { createNotificationServer } from '@/lib/notifications';
 
 import {
-  PaymentStatus,
   PaymentMethod,
   GatewayCode,
   CreateOrderResult,
@@ -36,24 +30,12 @@ export interface CreatePaymentResult {
 }
 
 export class PaymentService {
-  /**
-   * Create a payment and route to appropriate gateway
-   */
   static async createPayment(
     params: CreatePaymentParams
   ): Promise<CreatePaymentResult> {
     const supabase = createAdminClient();
 
     try {
-      // ========================================================
-      // 1. SELECT GATEWAY FIRST
-      // ========================================================
-      // IMPORTANT:
-      // The payments.gateway column is NOT NULL.
-      // Therefore gateway must be selected BEFORE inserting
-      // the payment record.
-      // ========================================================
-
       const routingDecision = await PaymentRouter.selectGateway({
         amount: params.amount,
         payment_method: params.payment_method,
@@ -76,13 +58,6 @@ export class PaymentService {
         reason: routingDecision.reason,
       });
 
-      // ========================================================
-      // 2. CREATE PAYMENT RECORD
-      // ========================================================
-      // gateway is now available, so the NOT NULL constraint
-      // will be satisfied.
-      // ========================================================
-
       const { data: payment, error: paymentError } = await supabase
         .from('payments')
         .insert({
@@ -91,13 +66,8 @@ export class PaymentService {
           combo_booking_id: params.combo_booking_id || null,
           amount: params.amount,
           currency: params.currency || 'INR',
-
-          // IMPORTANT FIX
           gateway: routingDecision.gateway_code,
-
-          // Keep selected_gateway in sync with gateway.
           selected_gateway: routingDecision.gateway_code,
-
           status: 'created',
         })
         .select()
@@ -126,10 +96,6 @@ export class PaymentService {
         };
       }
 
-      // ========================================================
-      // 3. LOG INITIAL ROUTING DECISION
-      // ========================================================
-
       await PaymentRouter.logRoutingDecision(
         payment.id,
         routingDecision.gateway_id,
@@ -138,14 +104,11 @@ export class PaymentService {
         1
       );
 
-      // ========================================================
-      // 4. CREATE PAYMENT ATTEMPT
-      // ========================================================
-
       const { data: attempt, error: attemptError } = await supabase
         .from('payment_attempts')
         .insert({
           payment_id: payment.id,
+          gateway: routingDecision.gateway_code,
           gateway_id: routingDecision.gateway_id,
           attempt_number: 1,
           status: 'started',
@@ -173,10 +136,6 @@ export class PaymentService {
         };
       }
 
-      // ========================================================
-      // 5. CREATE ORDER WITH SELECTED GATEWAY
-      // ========================================================
-
       const adapter = createGatewayAdapter(
         routingDecision.gateway_code
       );
@@ -193,10 +152,6 @@ export class PaymentService {
           combo_booking_id: params.combo_booking_id,
           metadata: params.metadata,
         });
-
-      // ========================================================
-      // 6. HANDLE GATEWAY ORDER FAILURE
-      // ========================================================
 
       if (
         !orderResult.success ||
@@ -218,10 +173,6 @@ export class PaymentService {
         );
       }
 
-      // ========================================================
-      // 7. UPDATE PAYMENT ATTEMPT
-      // ========================================================
-
       await supabase
         .from('payment_attempts')
         .update({
@@ -230,10 +181,6 @@ export class PaymentService {
         })
         .eq('id', attempt.id);
 
-      // ========================================================
-      // 8. UPDATE PAYMENT
-      // ========================================================
-
       await supabase
         .from('payments')
         .update({
@@ -241,10 +188,6 @@ export class PaymentService {
           status: 'checkout_started',
         })
         .eq('id', payment.id);
-
-      // ========================================================
-      // 9. RETURN CHECKOUT DATA
-      // ========================================================
 
       return {
         success: true,
@@ -266,10 +209,6 @@ export class PaymentService {
     }
   }
 
-  // ============================================================
-  // HANDLE FAILOVER TO NEXT AVAILABLE GATEWAY
-  // ============================================================
-
   private static async handleFailover(
     paymentId: string,
     failedGatewayId: string,
@@ -278,20 +217,12 @@ export class PaymentService {
     const supabase = createAdminClient();
 
     try {
-      // --------------------------------------------------------
-      // Get current attempt count
-      // --------------------------------------------------------
-
       const { data: attempts } = await supabase
         .from('payment_attempts')
         .select('attempt_number')
         .eq('payment_id', paymentId);
 
       const attemptCount = attempts?.length || 0;
-
-      // --------------------------------------------------------
-      // Maximum attempts reached
-      // --------------------------------------------------------
 
       if (attemptCount >= 2) {
         await supabase
@@ -308,10 +239,6 @@ export class PaymentService {
           error: 'All payment gateways unavailable',
         };
       }
-
-      // --------------------------------------------------------
-      // Find next gateway
-      // --------------------------------------------------------
 
       const failoverDecision =
         await PaymentRouter.getFailoverGateway(
@@ -347,10 +274,6 @@ export class PaymentService {
         }
       );
 
-      // --------------------------------------------------------
-      // Log failover decision
-      // --------------------------------------------------------
-
       await PaymentRouter.logRoutingDecision(
         paymentId,
         failoverDecision.gateway_id,
@@ -358,10 +281,6 @@ export class PaymentService {
         `Previous gateway failed, trying ${failoverDecision.gateway_code}`,
         attemptCount + 1
       );
-
-      // --------------------------------------------------------
-      // Update payment gateway
-      // --------------------------------------------------------
 
       await supabase
         .from('payments')
@@ -372,15 +291,12 @@ export class PaymentService {
         })
         .eq('id', paymentId);
 
-      // --------------------------------------------------------
-      // Create new payment attempt
-      // --------------------------------------------------------
-
       const { data: newAttempt, error: attemptError } =
         await supabase
           .from('payment_attempts')
           .insert({
             payment_id: paymentId,
+            gateway: failoverDecision.gateway_code,
             gateway_id: failoverDecision.gateway_id,
             attempt_number: attemptCount + 1,
             status: 'started',
@@ -410,10 +326,6 @@ export class PaymentService {
         };
       }
 
-      // --------------------------------------------------------
-      // Create order with fallback gateway
-      // --------------------------------------------------------
-
       const adapter = createGatewayAdapter(
         failoverDecision.gateway_code
       );
@@ -430,10 +342,6 @@ export class PaymentService {
           combo_booking_id: params.combo_booking_id,
           metadata: params.metadata,
         });
-
-      // --------------------------------------------------------
-      // Fallback gateway also failed
-      // --------------------------------------------------------
 
       if (
         !orderResult.success ||
@@ -454,10 +362,6 @@ export class PaymentService {
         };
       }
 
-      // --------------------------------------------------------
-      // Update fallback attempt
-      // --------------------------------------------------------
-
       await supabase
         .from('payment_attempts')
         .update({
@@ -466,10 +370,6 @@ export class PaymentService {
             orderResult.gateway_order_id,
         })
         .eq('id', newAttempt.id);
-
-      // --------------------------------------------------------
-      // Update payment
-      // --------------------------------------------------------
 
       await supabase
         .from('payments')
@@ -511,10 +411,6 @@ export class PaymentService {
     }
   }
 
-  // ============================================================
-  // PROCESS SUCCESSFUL PAYMENT
-  // ============================================================
-
   static async processSuccessfulPayment(
     paymentId: string,
     gatewayPaymentId: string,
@@ -522,7 +418,6 @@ export class PaymentService {
   ): Promise<void> {
     const supabase = createAdminClient();
 
-    // Get payment details
     const { data: payment } = await supabase
       .from('payments')
       .select('*')
@@ -534,10 +429,10 @@ export class PaymentService {
         '[PaymentService] Payment not found:',
         paymentId
       );
+
       return;
     }
 
-    // Update payment status
     await supabase
       .from('payments')
       .update({
@@ -547,7 +442,6 @@ export class PaymentService {
       })
       .eq('id', paymentId);
 
-    // Update payment attempt
     await supabase
       .from('payment_attempts')
       .update({
@@ -561,7 +455,6 @@ export class PaymentService {
       })
       .limit(1);
 
-    // Update gateway usage
     const { data: gateway } = await supabase
       .from('payment_gateways')
       .select('id')
@@ -576,7 +469,6 @@ export class PaymentService {
       });
     }
 
-    // Update booking status
     if (payment.booking_id) {
       await supabase
         .from('bookings')
@@ -586,7 +478,6 @@ export class PaymentService {
         .eq('id', payment.booking_id);
     }
 
-    // Update combo booking status
     if (payment.combo_booking_id) {
       await supabase
         .from('combo_bookings')
@@ -596,7 +487,6 @@ export class PaymentService {
         .eq('id', payment.combo_booking_id);
     }
 
-    // Send payment success notification
     try {
       await createNotificationServer({
         userId: payment.user_id,
@@ -619,17 +509,12 @@ export class PaymentService {
     }
   }
 
-  // ============================================================
-  // PROCESS FAILED PAYMENT
-  // ============================================================
-
   static async processFailedPayment(
     paymentId: string,
     reason: string
   ): Promise<void> {
     const supabase = createAdminClient();
 
-    // Get payment details
     const { data: payment } = await supabase
       .from('payments')
       .select('*')
@@ -641,10 +526,10 @@ export class PaymentService {
         '[PaymentService] Payment not found:',
         paymentId
       );
+
       return;
     }
 
-    // Update payment status
     await supabase
       .from('payments')
       .update({
@@ -654,7 +539,6 @@ export class PaymentService {
       })
       .eq('id', paymentId);
 
-    // Update payment attempt
     await supabase
       .from('payment_attempts')
       .update({
@@ -669,7 +553,6 @@ export class PaymentService {
       })
       .limit(1);
 
-    // Update gateway usage
     if (payment.selected_gateway) {
       const { data: gateway } = await supabase
         .from('payment_gateways')
@@ -686,7 +569,6 @@ export class PaymentService {
       }
     }
 
-    // Send payment failed notification
     try {
       await createNotificationServer({
         userId: payment.user_id,
@@ -706,10 +588,6 @@ export class PaymentService {
     }
   }
 
-  // ============================================================
-  // GET PAYMENT BY ID
-  // ============================================================
-
   static async getPayment(paymentId: string) {
     const supabase = createAdminClient();
 
@@ -724,15 +602,12 @@ export class PaymentService {
         '[PaymentService] Failed to get payment:',
         error
       );
+
       return null;
     }
 
     return data;
   }
-
-  // ============================================================
-  // GET PAYMENT ATTEMPTS
-  // ============================================================
 
   static async getPaymentAttempts(paymentId: string) {
     const supabase = createAdminClient();
@@ -750,6 +625,7 @@ export class PaymentService {
         '[PaymentService] Failed to get payment attempts:',
         error
       );
+
       return [];
     }
 
