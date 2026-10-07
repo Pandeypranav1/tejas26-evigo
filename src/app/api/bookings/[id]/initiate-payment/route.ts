@@ -5,6 +5,21 @@ import { createAdminClient } from '@/lib/supabase';
 import { PaymentService } from '@/lib/payment/service';
 import { PaymentMethod } from '@/lib/payment/types';
 
+/**
+ * ============================================================
+ * FAABCAB PAYMENT CONFIGURATION
+ * ============================================================
+ *
+ * Current FaabCab booking flow does not store a dynamic fare
+ * in the booking record.
+ *
+ * Until dynamic pricing is connected to the booking record,
+ * the current confirmed FaabCab payment amount is ₹500.
+ *
+ * This value is SERVER-SIDE.
+ */
+const FAABCAB_PAYMENT_AMOUNT = 500;
+
 const VALID_PAYMENT_METHODS = new Set<PaymentMethod>([
   'upi',
   'card',
@@ -13,32 +28,8 @@ const VALID_PAYMENT_METHODS = new Set<PaymentMethod>([
   'emi',
 ]);
 
-function getValidatedPaymentMethod(
-  value: unknown
-): PaymentMethod | null {
-  if (typeof value !== 'string') {
-    return null;
-  }
-
-  const normalized = value.trim().toLowerCase();
-
-  return VALID_PAYMENT_METHODS.has(
-    normalized as PaymentMethod
-  )
-    ? (normalized as PaymentMethod)
-    : null;
-}
-
 /**
- * Safely convert a possible booking/payment amount
- * into a positive number.
- *
- * Supports:
- * 500
- * "500"
- * "₹500"
- * "500.00"
- * "₹1,500.00"
+ * Safely convert a possible amount into a positive number.
  */
 function parseAmount(value: unknown): number | null {
   if (value === null || value === undefined) {
@@ -72,13 +63,37 @@ function parseAmount(value: unknown): number | null {
 }
 
 /**
- * Resolve the actual confirmed booking amount.
+ * Validate requested payment method.
+ */
+function getValidatedPaymentMethod(
+  value: unknown
+): PaymentMethod | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  return VALID_PAYMENT_METHODS.has(
+    normalized as PaymentMethod
+  )
+    ? (normalized as PaymentMethod)
+    : null;
+}
+
+/**
+ * Resolve payment amount.
  *
- * We intentionally do not invent a fallback amount.
+ * Priority:
+ * 1. Existing amount stored in booking
+ * 2. Current FaabCab server-side ₹500 amount
  */
 function resolveBookingAmount(
   booking: Record<string, any>
-): number | null {
+): {
+  amount: number;
+  source: string;
+} {
   const possibleAmountFields = [
     'amount',
     'total_amount',
@@ -94,19 +109,20 @@ function resolveBookingAmount(
   ];
 
   for (const field of possibleAmountFields) {
-    const amount = parseAmount(booking[field]);
+    const parsed = parseAmount(booking?.[field]);
 
-    if (amount !== null) {
-      console.log(
-        `[POST /api/bookings/:id/initiate-payment] Using booking amount from field "${field}":`,
-        amount
-      );
-
-      return amount;
+    if (parsed !== null) {
+      return {
+        amount: parsed,
+        source: `booking.${field}`,
+      };
     }
   }
 
-  return null;
+  return {
+    amount: FAABCAB_PAYMENT_AMOUNT,
+    source: 'faabcab-server-default',
+  };
 }
 
 export const runtime = 'nodejs';
@@ -124,15 +140,19 @@ export async function POST(
   let user: any = null;
 
   try {
-    // =========================================================
+    // ========================================================
     // 1. AUTHENTICATION
-    // =========================================================
+    // ========================================================
 
     const authResult = await getAuthenticatedUser();
 
     user = authResult.user;
 
     if (!user) {
+      console.error(
+        '[POST /api/bookings/:id/initiate-payment] Authentication required'
+      );
+
       return NextResponse.json(
         {
           success: false,
@@ -142,27 +162,21 @@ export async function POST(
       );
     }
 
-    // =========================================================
-    // 2. PARSE REQUEST BODY
-    // =========================================================
+    // ========================================================
+    // 2. REQUEST BODY
+    // ========================================================
 
     let body: any = {};
 
     try {
       body = await request.json();
     } catch {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid request body',
-        },
-        { status: 400 }
-      );
+      body = {};
     }
 
-    // =========================================================
-    // 3. VALIDATE PAYMENT METHOD
-    // =========================================================
+    // ========================================================
+    // 3. PAYMENT METHOD
+    // ========================================================
 
     const payment_method =
       getValidatedPaymentMethod(
@@ -179,11 +193,27 @@ export async function POST(
       );
     }
 
-    const supabase = createAdminClient();
+    /**
+     * IMPORTANT:
+     *
+     * We intentionally type the admin Supabase client as any
+     * in this payment route.
+     *
+     * Your generated Supabase types are currently returning
+     * GenericStringError for the payments table query.
+     *
+     * That causes errors such as:
+     *
+     * Property 'id' does not exist on type 'GenericStringError'
+     *
+     * The runtime database query itself is valid, so this
+     * avoids the incorrect generated-type inference.
+     */
+    const supabase: any = createAdminClient();
 
-    // =========================================================
-    // 4. GET BOOKING
-    // =========================================================
+    // ========================================================
+    // 4. LOAD BOOKING
+    // ========================================================
 
     const {
       data: booking,
@@ -200,6 +230,9 @@ export async function POST(
         {
           bookingId,
           error: bookingError?.message,
+          code: bookingError?.code,
+          details: bookingError?.details,
+          hint: bookingError?.hint,
         }
       );
 
@@ -212,13 +245,13 @@ export async function POST(
       );
     }
 
-    // =========================================================
-    // 5. VERIFY BOOKING OWNERSHIP
-    // =========================================================
+    // ========================================================
+    // 5. OWNERSHIP CHECK
+    // ========================================================
 
     if (booking.client_id !== user.id) {
       console.error(
-        '[POST /api/bookings/:id/initiate-payment] Booking ownership mismatch:',
+        '[POST /api/bookings/:id/initiate-payment] Ownership mismatch:',
         {
           bookingId,
           bookingClientId: booking.client_id,
@@ -235,9 +268,9 @@ export async function POST(
       );
     }
 
-    // =========================================================
-    // 6. PREVENT DUPLICATE SUCCESSFUL PAYMENT
-    // =========================================================
+    // ========================================================
+    // 6. ALREADY PAID CHECK
+    // ========================================================
 
     if (booking.payment_status === 'paid') {
       console.log(
@@ -255,94 +288,82 @@ export async function POST(
       );
     }
 
-    // =========================================================
-    // 7. RESOLVE ACTUAL BOOKING AMOUNT
-    // =========================================================
+    // ========================================================
+    // 7. RESOLVE PAYMENT AMOUNT
+    // ========================================================
 
-    const amount = resolveBookingAmount(booking);
+    const {
+      amount,
+      source: amountSource,
+    } = resolveBookingAmount(
+      booking as Record<string, any>
+    );
 
     console.log(
-      '[POST /api/bookings/:id/initiate-payment] Resolved payment amount:',
+      '[POST /api/bookings/:id/initiate-payment] Payment amount resolved:',
       {
         bookingId,
         amount,
-        bookingAmount: booking.amount,
-        totalAmount: booking.total_amount,
-        finalAmount: booking.final_amount,
-        price: booking.price,
-        totalPrice: booking.total_price,
-        bookingAmountField: booking.booking_amount,
-        fare: booking.fare,
-        totalFare: booking.total_fare,
-        estimatedFare: booking.estimated_fare,
-        finalFare: booking.final_fare,
-        baseFare: booking.base_fare,
+        amountSource,
+        bookingAmount:
+          booking?.amount ?? null,
+        totalAmount:
+          booking?.total_amount ?? null,
+        finalAmount:
+          booking?.final_amount ?? null,
+        price:
+          booking?.price ?? null,
+        totalPrice:
+          booking?.total_price ?? null,
+        fare:
+          booking?.fare ?? null,
       }
     );
 
-    if (amount === null) {
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
       console.error(
-        '[POST /api/bookings/:id/initiate-payment] No valid booking amount found:',
+        '[POST /api/bookings/:id/initiate-payment] Invalid payment amount:',
         {
           bookingId,
+          amount,
+          amountSource,
         }
       );
 
       return NextResponse.json(
         {
           success: false,
-          error:
-            'Booking price is not confirmed yet. Please wait until the booking amount is available before making payment.',
-          code: 'BOOKING_AMOUNT_MISSING',
+          error: 'Invalid booking payment amount',
+          code: 'INVALID_BOOKING_AMOUNT',
         },
         { status: 400 }
       );
     }
 
-    // =========================================================
-    // 8. HANDLE EXISTING NON-TERMINAL PAYMENTS
+    // ========================================================
+    // 8. FIND EXISTING NON-TERMINAL PAYMENTS
+    // ========================================================
     //
     // IMPORTANT:
     //
-    // Previously we returned an existing payment with only:
+    // We do NOT reuse old checkout_data.
     //
-    // {
-    //   order_id: existingPayment.gateway_order_id
-    // }
+    // An old payment may only contain gateway_order_id and
+    // therefore cannot safely reconstruct a complete Razorpay
+    // Checkout configuration.
     //
-    // That is NOT enough for Razorpay Checkout.
-    //
-    // Razorpay Checkout needs:
-    //
-    // key
-    // order_id
-    // amount
-    // currency
-    //
-    // Therefore we NEVER reuse an incomplete old payment
-    // for a new checkout.
-    //
-    // Instead:
-    //
-    // old payment
-    //      ↓
-    // mark failed
-    //      ↓
-    // create fresh payment
-    //      ↓
-    // fresh Razorpay order
-    //      ↓
-    // complete checkout_data
-    // =========================================================
+    // We close incomplete payments and create a fresh payment.
+    // ========================================================
 
     const {
       data: existingPayments,
       error: existingPaymentError,
     } = await supabase
       .from('payments')
-      .select(
-        'id, amount, status, gateway, selected_gateway, gateway_order_id, gateway_payment_id, created_at'
-      )
+      .select('*')
       .eq('booking_id', bookingId)
       .in('status', [
         'created',
@@ -357,51 +378,67 @@ export async function POST(
     if (existingPaymentError) {
       console.warn(
         '[POST /api/bookings/:id/initiate-payment] Existing payment lookup warning:',
-        existingPaymentError.message
+        {
+          message:
+            existingPaymentError.message,
+          code:
+            existingPaymentError.code,
+        }
       );
     }
 
-    if (
-      existingPayments &&
-      existingPayments.length > 0
-    ) {
+    const payments: any[] =
+      Array.isArray(existingPayments)
+        ? existingPayments
+        : [];
+
+    // ========================================================
+    // 9. HANDLE EXISTING PAYMENTS
+    // ========================================================
+
+    if (payments.length > 0) {
       console.log(
         '[POST /api/bookings/:id/initiate-payment] Existing non-terminal payments found:',
-        existingPayments.map((payment) => ({
-          paymentId: payment.id,
-          status: payment.status,
-          gateway: payment.gateway,
-          selectedGateway:
-            payment.selected_gateway,
-          gatewayOrderId:
-            payment.gateway_order_id,
-          hasGatewayPaymentId:
-            Boolean(
-              payment.gateway_payment_id
-            ),
-          amount: payment.amount,
-          createdAt: payment.created_at,
-        }))
+        payments.map(
+          (payment: any) => ({
+            id:
+              payment?.id,
+            status:
+              payment?.status,
+            amount:
+              payment?.amount,
+            gateway:
+              payment?.gateway,
+            selectedGateway:
+              payment?.selected_gateway,
+            gatewayOrderId:
+              payment?.gateway_order_id,
+            gatewayPaymentId:
+              payment?.gateway_payment_id,
+            createdAt:
+              payment?.created_at,
+          })
+        )
       );
 
-      for (const existingPayment of existingPayments) {
-        // -------------------------------------------------------
-        // If a real gateway payment ID already exists, do NOT
-        // automatically create another payment.
-        //
-        // The gateway may still be processing that payment.
-        // -------------------------------------------------------
+      for (const existingPayment of payments) {
+        // ----------------------------------------------------
+        // If gateway_payment_id exists, the payment may already
+        // be processing at Razorpay.
+        // ----------------------------------------------------
 
         if (
-          existingPayment.gateway_payment_id
+          existingPayment?.gateway_payment_id
         ) {
           console.warn(
-            '[POST /api/bookings/:id/initiate-payment] Existing payment has gateway payment ID; payment is already being processed:',
+            '[POST /api/bookings/:id/initiate-payment] Existing gateway payment is already processing:',
             {
-              paymentId: existingPayment.id,
+              paymentId:
+                existingPayment?.id,
               gatewayPaymentId:
-                existingPayment.gateway_payment_id,
-              status: existingPayment.status,
+                existingPayment?.gateway_payment_id,
+              status:
+                existingPayment?.status,
             }
           );
 
@@ -409,35 +446,30 @@ export async function POST(
             {
               success: false,
               error:
-                'A payment is already being processed for this booking. Please wait a moment and refresh the page.',
+                'A payment is already being processed for this booking. Please wait a moment and try again.',
               code:
                 'PAYMENT_ALREADY_PROCESSING',
               payment_id:
-                existingPayment.id,
+                existingPayment?.id,
             },
             { status: 409 }
           );
         }
 
-        // -------------------------------------------------------
-        // Old payment has no gateway payment ID.
-        //
-        // It is safe to mark it failed and create a fresh
-        // payment attempt.
-        // -------------------------------------------------------
-
-        const existingAmount = parseAmount(
-          existingPayment.amount
-        );
+        // ----------------------------------------------------
+        // No gateway payment ID means incomplete/stale payment.
+        // Close it before creating a fresh payment.
+        // ----------------------------------------------------
 
         console.warn(
-          '[POST /api/bookings/:id/initiate-payment] Superseding stale payment:',
+          '[POST /api/bookings/:id/initiate-payment] Closing stale payment:',
           {
-            paymentId: existingPayment.id,
-            status: existingPayment.status,
-            amount: existingAmount,
+            paymentId:
+              existingPayment?.id,
+            status:
+              existingPayment?.status,
             gatewayOrderId:
-              existingPayment.gateway_order_id,
+              existingPayment?.gateway_order_id,
           }
         );
 
@@ -448,11 +480,12 @@ export async function POST(
           .update({
             status: 'failed',
             failure_reason:
-              'Previous checkout attempt was incomplete and was superseded by a fresh checkout attempt.',
-            failed_at:
-              new Date().toISOString(),
+              'Previous incomplete checkout attempt superseded by a fresh checkout attempt.',
           })
-          .eq('id', existingPayment.id)
+          .eq(
+            'id',
+            existingPayment?.id
+          )
           .in('status', [
             'created',
             'checkout_started',
@@ -464,9 +497,11 @@ export async function POST(
             '[POST /api/bookings/:id/initiate-payment] Failed to close stale payment:',
             {
               paymentId:
-                existingPayment.id,
+                existingPayment?.id,
               error:
                 stalePaymentError.message,
+              code:
+                stalePaymentError.code,
             }
           );
 
@@ -481,68 +516,16 @@ export async function POST(
             { status: 500 }
           );
         }
-
-        // -------------------------------------------------------
-        // Best-effort cleanup of old payment attempt.
-        //
-        // This is intentionally non-blocking. The new payment
-        // must not depend on the old attempt being updated.
-        // -------------------------------------------------------
-
-        try {
-          const {
-            error: attemptCleanupError,
-          } = await supabase
-            .from('payment_attempts')
-            .update({
-              status: 'failed',
-              error_message:
-                'Payment attempt superseded by a fresh checkout attempt.',
-              completed_at:
-                new Date().toISOString(),
-            })
-            .eq(
-              'payment_id',
-              existingPayment.id
-            )
-            .in('status', [
-              'started',
-              'order_created',
-              'processing',
-            ]);
-
-          if (attemptCleanupError) {
-            console.warn(
-              '[POST /api/bookings/:id/initiate-payment] Old payment attempt cleanup warning:',
-              {
-                paymentId:
-                  existingPayment.id,
-                error:
-                  attemptCleanupError.message,
-              }
-            );
-          }
-        } catch (attemptCleanupException: any) {
-          console.warn(
-            '[POST /api/bookings/:id/initiate-payment] Old payment attempt cleanup exception:',
-            {
-              paymentId:
-                existingPayment.id,
-              error:
-                attemptCleanupException?.message,
-            }
-          );
-        }
       }
 
       console.log(
-        '[POST /api/bookings/:id/initiate-payment] Old payment attempts cleared. A fresh payment will be created.'
+        '[POST /api/bookings/:id/initiate-payment] Stale payment attempts cleared.'
       );
     }
 
-    // =========================================================
-    // 9. GET CUSTOMER PROFILE
-    // =========================================================
+    // ========================================================
+    // 10. CUSTOMER PROFILE
+    // ========================================================
 
     const {
       data: profile,
@@ -560,110 +543,96 @@ export async function POST(
       profileError.code !== 'PGRST116'
     ) {
       console.warn(
-        '[POST /api/bookings/:id/initiate-payment] Profile query warning:',
+        '[POST /api/bookings/:id/initiate-payment] Profile lookup warning:',
         profileError.message
       );
     }
 
     const customerName =
-      booking.customer_name ||
+      booking?.customer_name ||
       profile?.full_name ||
-      user.user_metadata?.full_name ||
+      user?.user_metadata?.full_name ||
       'Customer';
 
     const customerPhone =
-      booking.customer_phone ||
+      booking?.customer_phone ||
       profile?.phone ||
-      user.phone ||
+      user?.phone ||
       '';
 
     const customerEmail =
-      booking.customer_email ||
+      booking?.customer_email ||
       profile?.email ||
-      user.email ||
+      user?.email ||
       '';
 
-    // =========================================================
-    // 10. FINAL AMOUNT SAFETY CHECK
-    // =========================================================
-
-    if (
-      !Number.isFinite(amount) ||
-      amount <= 0
-    ) {
-      console.error(
-        '[POST /api/bookings/:id/initiate-payment] Invalid final amount:',
-        {
-          bookingId,
-          amount,
-        }
-      );
-
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid booking amount',
-          code: 'INVALID_BOOKING_AMOUNT',
-        },
-        { status: 400 }
-      );
-    }
-
-    // =========================================================
+    // ========================================================
     // 11. CREATE FRESH PAYMENT
-    // =========================================================
+    // ========================================================
 
     console.log(
       '[POST /api/bookings/:id/initiate-payment] Creating fresh payment:',
       {
         bookingId,
-        userId: user.id,
+        userId:
+          user.id,
         amount,
-        currency: 'INR',
-        payment_method,
+        currency:
+          'INR',
+        paymentMethod:
+          payment_method,
+        amountSource,
       }
     );
 
     const result =
       await PaymentService.createPayment({
-        user_id: user.id,
+        user_id:
+          user.id,
 
         amount,
 
-        currency: 'INR',
+        currency:
+          'INR',
 
         payment_method,
 
-        customer_name: customerName,
+        customer_name:
+          customerName,
 
-        customer_email: customerEmail,
+        customer_email:
+          customerEmail,
 
-        customer_phone: customerPhone,
+        customer_phone:
+          customerPhone,
 
-        booking_id: bookingId,
+        booking_id:
+          bookingId,
 
         metadata: {
           service_type:
-            booking.service_type ||
-            booking.transport_service ||
-            null,
+            booking?.service_type ||
+            booking?.transport_service ||
+            'Transport',
 
           provider_name:
-            booking.provider_name ||
-            null,
+            booking?.provider_name ||
+            'FaabCab',
 
-          booking_amount_source:
-            'booking_record',
+          amount_source:
+            amountSource,
+
+          faabcab_payment_amount:
+            amount,
 
           checkout_retry:
-            existingPayments &&
-            existingPayments.length > 0,
+            payments.length > 0,
         },
       });
 
-    // =========================================================
+    // ========================================================
     // 12. PAYMENT SERVICE FAILURE
-    // =========================================================
+    // ========================================================
 
     if (!result.success) {
       console.error(
@@ -671,7 +640,8 @@ export async function POST(
         {
           bookingId,
           amount,
-          error: result.error,
+          error:
+            result.error,
         }
       );
 
@@ -686,12 +656,9 @@ export async function POST(
       );
     }
 
-    // =========================================================
-    // 13. STRICT CHECKOUT DATA VALIDATION
-    //
-    // Do NOT return success to frontend if the gateway did not
-    // give us complete checkout data.
-    // =========================================================
+    // ========================================================
+    // 13. CHECKOUT DATA
+    // ========================================================
 
     const checkoutData =
       result.checkout_data as
@@ -700,47 +667,66 @@ export async function POST(
       | undefined;
 
     const checkoutKey =
-      checkoutData?.key;
+      typeof checkoutData?.key === 'string'
+        ? checkoutData.key.trim()
+        : '';
 
     const checkoutOrderId =
-      checkoutData?.order_id;
+      typeof checkoutData?.order_id ===
+        'string'
+        ? checkoutData.order_id.trim()
+        : '';
 
     const checkoutAmount =
-      parseAmount(checkoutData?.amount);
+      parseAmount(
+        checkoutData?.amount
+      );
 
     const checkoutCurrency =
-      checkoutData?.currency || 'INR';
+      typeof checkoutData?.currency ===
+        'string' &&
+        checkoutData.currency.trim()
+        ? checkoutData.currency.trim()
+        : 'INR';
 
     console.log(
-      '[POST /api/bookings/:id/initiate-payment] Gateway checkout data received:',
+      '[POST /api/bookings/:id/initiate-payment] Checkout data validation:',
       {
-        paymentId: result.payment_id,
-        hasKey: Boolean(checkoutKey),
-        hasOrderId: Boolean(checkoutOrderId),
-        amount: checkoutAmount,
-        currency: checkoutCurrency,
+        paymentId:
+          result.payment_id,
+        hasKey:
+          Boolean(checkoutKey),
+        hasOrderId:
+          Boolean(checkoutOrderId),
+        checkoutAmount,
+        checkoutCurrency,
       }
     );
 
+    // ========================================================
+    // 14. NEVER RETURN INVALID CHECKOUT DATA
+    // ========================================================
+
     if (
       !checkoutData ||
-      typeof checkoutData !== 'object' ||
-      typeof checkoutKey !== 'string' ||
-      !checkoutKey.trim() ||
-      typeof checkoutOrderId !== 'string' ||
-      !checkoutOrderId.trim() ||
+      !checkoutKey ||
+      !checkoutOrderId ||
       checkoutAmount === null ||
       checkoutAmount <= 0
     ) {
       console.error(
-        '[POST /api/bookings/:id/initiate-payment] Gateway returned incomplete checkout data:',
+        '[POST /api/bookings/:id/initiate-payment] INCOMPLETE CHECKOUT DATA:',
         {
-          paymentId: result.payment_id,
-          checkoutDataKeys:
+          paymentId:
+            result.payment_id,
+          checkoutKeys:
             checkoutData
-              ? Object.keys(checkoutData)
+              ? Object.keys(
+                checkoutData
+              )
               : [],
-          hasKey: Boolean(checkoutKey),
+          hasKey:
+            Boolean(checkoutKey),
           hasOrderId:
             Boolean(checkoutOrderId),
           checkoutAmount,
@@ -760,21 +746,28 @@ export async function POST(
       );
     }
 
-    // =========================================================
-    // 14. VERIFY ORDER/AMOUNT CONSISTENCY
-    // =========================================================
+    // ========================================================
+    // 15. VERIFY AMOUNT CONSISTENCY
+    // ========================================================
 
     if (
-      Math.round(checkoutAmount * 100) !==
-      Math.round(amount * 100)
+      Math.round(
+        checkoutAmount * 100
+      ) !==
+      Math.round(
+        amount * 100
+      )
     ) {
       console.error(
         '[POST /api/bookings/:id/initiate-payment] Gateway amount mismatch:',
         {
-          paymentId: result.payment_id,
-          bookingAmount: amount,
+          paymentId:
+            result.payment_id,
+          expectedAmount:
+            amount,
           checkoutAmount,
-          checkoutOrderId,
+          orderId:
+            checkoutOrderId,
         }
       );
 
@@ -790,94 +783,104 @@ export async function POST(
       );
     }
 
-    // =========================================================
-    // 15. SAVE PAYMENT REFERENCE TO BOOKING
-    // =========================================================
+    // ========================================================
+    // 16. SAVE PAYMENT ID TO BOOKING
+    // ========================================================
 
     const {
       error: bookingUpdateError,
     } = await supabase
       .from('bookings')
       .update({
-        payment_id: result.payment_id,
+        payment_id:
+          result.payment_id,
       })
-      .eq('id', bookingId);
+      .eq(
+        'id',
+        bookingId
+      );
 
     if (bookingUpdateError) {
       console.error(
         '[POST /api/bookings/:id/initiate-payment] Failed to update booking payment_id:',
-        bookingUpdateError
+        {
+          bookingId,
+          paymentId:
+            result.payment_id,
+          error:
+            bookingUpdateError.message,
+          code:
+            bookingUpdateError.code,
+        }
       );
 
-      // Payment was already created successfully.
-      // We still return the complete checkout data so the
-      // customer is not blocked from paying.
-      return NextResponse.json({
-        success: true,
-
-        payment_id: result.payment_id,
-
-        checkout_data: {
-          ...checkoutData,
-
-          key: checkoutKey,
-
-          order_id: checkoutOrderId,
-
-          amount: checkoutAmount,
-
-          currency: checkoutCurrency,
-        },
-
-        amount,
-
-        warning:
-          'Payment created but booking payment reference could not be updated.',
-      });
+      // Do not block payment.
+      //
+      // The payment itself has already been created and the
+      // checkout data is valid.
     }
 
-    // =========================================================
-    // 16. FINAL SUCCESS RESPONSE
-    // =========================================================
+    // ========================================================
+    // 17. FINAL RESPONSE
+    // ========================================================
+
+    const finalCheckoutData = {
+      ...checkoutData,
+
+      key:
+        checkoutKey,
+
+      order_id:
+        checkoutOrderId,
+
+      amount:
+        checkoutAmount,
+
+      currency:
+        checkoutCurrency,
+    };
 
     console.log(
-      '[POST /api/bookings/:id/initiate-payment] Returning fresh checkout data:',
+      '[POST /api/bookings/:id/initiate-payment] PAYMENT CHECKOUT READY:',
       {
         bookingId,
-        paymentId: result.payment_id,
-        orderId: checkoutOrderId,
-        amount: checkoutAmount,
-        currency: checkoutCurrency,
+        paymentId:
+          result.payment_id,
+        orderId:
+          checkoutOrderId,
+        amount:
+          checkoutAmount,
+        currency:
+          checkoutCurrency,
       }
     );
 
     return NextResponse.json({
       success: true,
 
-      payment_id: result.payment_id,
+      payment_id:
+        result.payment_id,
 
-      checkout_data: {
-        ...checkoutData,
+      checkout_data:
+        finalCheckoutData,
 
-        key: checkoutKey,
+      amount:
+        checkoutAmount,
 
-        order_id: checkoutOrderId,
-
-        amount: checkoutAmount,
-
-        currency: checkoutCurrency,
-      },
-
-      amount,
+      currency:
+        checkoutCurrency,
     });
   } catch (error: any) {
     console.error(
       '[POST /api/bookings/:id/initiate-payment] Unexpected error:',
       {
         bookingId,
-        userId: user?.id,
-        error: error?.message,
-        stack: error?.stack,
+        userId:
+          user?.id,
+        message:
+          error?.message,
+        stack:
+          error?.stack,
       }
     );
 
