@@ -5,22 +5,6 @@ import { createAdminClient } from '@/lib/supabase';
 import { PaymentService } from '@/lib/payment/service';
 import { PaymentMethod } from '@/lib/payment/types';
 
-/**
- * ============================================================
- * FAABCAB PAYMENT CONFIGURATION
- * ============================================================
- *
- * Current FaabCab booking flow does not store a dynamic fare
- * in the booking record.
- *
- * Until dynamic pricing is connected to the booking record,
- * the current confirmed FaabCab payment amount is ₹500.
- *
- * IMPORTANT:
- * This is SERVER-SIDE and is never trusted from the browser.
- */
-const FAABCAB_PAYMENT_AMOUNT = 500;
-
 const VALID_PAYMENT_METHODS = new Set<PaymentMethod>([
   'upi',
   'card',
@@ -29,27 +13,28 @@ const VALID_PAYMENT_METHODS = new Set<PaymentMethod>([
   'emi',
 ]);
 
+function getValidatedPaymentMethod(value: unknown): PaymentMethod | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  return VALID_PAYMENT_METHODS.has(normalized as PaymentMethod)
+    ? (normalized as PaymentMethod)
+    : null;
+}
+
 /**
- * Safely convert a possible rupee amount into a positive number.
- *
- * This helper is used for DATABASE amounts, which are stored
- * in rupees.
+ * Safely convert a possible amount into a positive number.
  */
-function parseRupeeAmount(
-  value: unknown
-): number | null {
-  if (
-    value === null ||
-    value === undefined
-  ) {
+function parseAmount(value: unknown): number | null {
+  if (value === null || value === undefined) {
     return null;
   }
 
   if (typeof value === 'number') {
-    return Number.isFinite(value) &&
-      value > 0
-      ? value
-      : null;
+    return Number.isFinite(value) && value > 0 ? value : null;
   }
 
   if (typeof value === 'string') {
@@ -64,58 +49,21 @@ function parseRupeeAmount(
 
     const parsed = Number(cleaned);
 
-    return Number.isFinite(parsed) &&
-      parsed > 0
-      ? parsed
-      : null;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
   }
 
   return null;
 }
 
 /**
- * Validate payment method.
- */
-function getValidatedPaymentMethod(
-  value: unknown
-): PaymentMethod | null {
-  if (typeof value !== 'string') {
-    return null;
-  }
-
-  const normalized =
-    value.trim().toLowerCase();
-
-  return VALID_PAYMENT_METHODS.has(
-    normalized as PaymentMethod
-  )
-    ? (normalized as PaymentMethod)
-    : null;
-}
-
-/**
- * Resolve booking amount in RUPEES.
+ * Resolve the actual booking amount.
  *
- * Example:
- *
- * booking.amount = 500
- *
- * returns:
- *
- * {
- *   amount: 500,
- *   source: "booking.amount"
- * }
- *
- * If no booking amount exists, current FaabCab
- * server-side amount of ₹500 is used.
+ * We only use values already present on the booking.
+ * We never silently invent a price here.
  */
 function resolveBookingAmount(
   booking: Record<string, any>
-): {
-  amount: number;
-  source: string;
-} {
+): number | null {
   const possibleAmountFields = [
     'amount',
     'total_amount',
@@ -130,27 +78,72 @@ function resolveBookingAmount(
     'base_fare',
   ];
 
-  for (
-    const field of possibleAmountFields
-  ) {
-    const parsed =
-      parseRupeeAmount(
-        booking?.[field]
+  for (const field of possibleAmountFields) {
+    const amount = parseAmount(booking[field]);
+
+    if (amount !== null) {
+      console.log(
+        `[POST /api/bookings/:id/initiate-payment] Using booking amount from field "${field}":`,
+        amount
       );
 
-    if (parsed !== null) {
-      return {
-        amount: parsed,
-        source: `booking.${field}`,
-      };
+      return amount;
     }
   }
 
+  return null;
+}
+
+/**
+ * Get the correct Razorpay public key for the current environment.
+ *
+ * This is only used when reusing an already-created Razorpay order.
+ */
+function getRazorpayPublicKey(): string | null {
+  const environment = process.env.PAYMENT_ENV || 'sandbox';
+
+  const key =
+    environment === 'production'
+      ? process.env.RAZORPAY_KEY_ID || ''
+      : process.env.RAZORPAY_KEY_ID_SANDBOX || '';
+
+  return key.trim() || null;
+}
+
+/**
+ * Build checkout data for an existing Razorpay payment.
+ *
+ * Razorpay expects amount in paise.
+ */
+function buildExistingRazorpayCheckout(
+  payment: Record<string, any>,
+  amount: number
+) {
+  const gatewayOrderId =
+    typeof payment.gateway_order_id === 'string'
+      ? payment.gateway_order_id.trim()
+      : '';
+
+  if (!gatewayOrderId) {
+    return null;
+  }
+
+  const key = getRazorpayPublicKey();
+
+  if (!key) {
+    return null;
+  }
+
   return {
-    amount:
-      FAABCAB_PAYMENT_AMOUNT,
-    source:
-      'faabcab-server-default',
+    key,
+    order_id: gatewayOrderId,
+    amount: Math.round(amount * 100),
+    currency: payment.currency || 'INR',
+    prefill: {
+      name: payment.customer_name || undefined,
+      email: payment.customer_email || undefined,
+      contact: payment.customer_phone || undefined,
+    },
   };
 }
 
@@ -158,93 +151,73 @@ export const runtime = 'nodejs';
 
 export async function POST(
   request: Request,
-  {
-    params,
-  }: {
-    params: Promise<{
-      id: string;
-    }>;
-  }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const {
-    id: bookingId,
-  } = await params;
-
-  let user: any = null;
+  const { id: bookingId } = await params;
 
   try {
-    // ========================================================
+    // =========================================================
     // 1. AUTHENTICATION
-    // ========================================================
+    // =========================================================
 
-    const authResult =
-      await getAuthenticatedUser();
+    const authResult = await getAuthenticatedUser();
 
-    user = authResult.user;
+    const user = authResult.user;
 
     if (!user) {
-      console.error(
-        '[POST /api/bookings/:id/initiate-payment] Authentication required'
-      );
-
       return NextResponse.json(
         {
           success: false,
-          error:
-            'Authentication required',
+          error: 'Authentication required',
+          code: 'AUTHENTICATION_REQUIRED',
         },
         { status: 401 }
       );
     }
 
-    // ========================================================
-    // 2. REQUEST BODY
-    // ========================================================
+    // =========================================================
+    // 2. PARSE REQUEST
+    // =========================================================
 
     let body: any = {};
 
     try {
-      body =
-        await request.json();
+      body = await request.json();
     } catch {
-      body = {};
-    }
-
-    // ========================================================
-    // 3. PAYMENT METHOD
-    // ========================================================
-
-    const payment_method =
-      getValidatedPaymentMethod(
-        body?.payment_method ??
-        'upi'
-      );
-
-    if (!payment_method) {
       return NextResponse.json(
         {
           success: false,
-          error:
-            'Unsupported payment method',
+          error: 'Invalid request body',
+          code: 'INVALID_REQUEST_BODY',
         },
         { status: 400 }
       );
     }
 
-    /**
-     * The current generated Supabase types can incorrectly
-     * infer GenericStringError for these payment queries.
-     *
-     * We intentionally use an admin client typed as any in
-     * this route so the runtime query result is not blocked
-     * by the generated type issue.
-     */
-    const supabase: any =
-      createAdminClient();
+    // =========================================================
+    // 3. VALIDATE PAYMENT METHOD
+    // =========================================================
 
-    // ========================================================
+    const payment_method = getValidatedPaymentMethod(
+      body?.payment_method ?? 'upi'
+    );
+
+    if (!payment_method) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Unsupported payment method',
+          code: 'UNSUPPORTED_PAYMENT_METHOD',
+        },
+        { status: 400 }
+      );
+    }
+
+    const supabase: any = createAdminClient();
+
+    // =========================================================
     // 4. LOAD BOOKING
-    // ========================================================
+    // =========================================================
 
     const {
       data: booking,
@@ -255,156 +228,100 @@ export async function POST(
       .eq('id', bookingId)
       .single();
 
-    if (
-      bookingError ||
-      !booking
-    ) {
+    if (bookingError || !booking) {
       console.error(
         '[POST /api/bookings/:id/initiate-payment] Booking lookup failed:',
         {
           bookingId,
-          error:
-            bookingError?.message,
-          code:
-            bookingError?.code,
-          details:
-            bookingError?.details,
-          hint:
-            bookingError?.hint,
+          error: bookingError?.message,
         }
       );
 
       return NextResponse.json(
         {
           success: false,
-          error:
-            'Booking not found',
+          error: 'Booking not found',
+          code: 'BOOKING_NOT_FOUND',
         },
         { status: 404 }
       );
     }
 
-    // ========================================================
+    // =========================================================
     // 5. OWNERSHIP CHECK
-    // ========================================================
+    // =========================================================
 
-    if (
-      booking.client_id !==
-      user.id
-    ) {
-      console.error(
-        '[POST /api/bookings/:id/initiate-payment] Ownership mismatch:',
+    if (booking.client_id !== user.id) {
+      console.warn(
+        '[POST /api/bookings/:id/initiate-payment] Unauthorized booking access:',
         {
           bookingId,
-          bookingClientId:
-            booking.client_id,
-          userId:
-            user.id,
+          userId: user.id,
         }
       );
 
       return NextResponse.json(
         {
           success: false,
-          error:
-            'Not authorized',
+          error: 'Not authorized',
+          code: 'NOT_AUTHORIZED',
         },
         { status: 403 }
       );
     }
 
-    // ========================================================
-    // 6. ALREADY PAID CHECK
-    // ========================================================
+    // =========================================================
+    // 6. PREVENT PAYMENT FOR ALREADY-PAID BOOKING
+    // =========================================================
 
-    if (
-      booking.payment_status ===
-      'paid'
-    ) {
+    if (booking.payment_status === 'paid') {
       console.log(
         '[POST /api/bookings/:id/initiate-payment] Booking already paid:',
-        bookingId
+        {
+          bookingId,
+        }
       );
 
       return NextResponse.json(
         {
           success: false,
-          error:
-            'Booking already paid',
-          code:
-            'BOOKING_ALREADY_PAID',
+          error: 'Booking already paid',
+          code: 'BOOKING_ALREADY_PAID',
         },
         { status: 400 }
       );
     }
 
-    // ========================================================
-    // 7. RESOLVE PAYMENT AMOUNT
-    // ========================================================
-    //
-    // IMPORTANT:
-    //
-    // This value is in RUPEES.
-    //
-    // ₹500 here will become 50000 paise inside the
-    // Razorpay adapter.
-    // ========================================================
+    // =========================================================
+    // 7. RESOLVE BOOKING AMOUNT
+    // =========================================================
 
-    const {
-      amount,
-      source: amountSource,
-    } =
-      resolveBookingAmount(
-        booking as Record<
-          string,
-          any
-        >
-      );
+    const amount = resolveBookingAmount(booking);
 
     console.log(
-      '[POST /api/bookings/:id/initiate-payment] Payment amount resolved:',
+      '[POST /api/bookings/:id/initiate-payment] Resolved payment amount:',
       {
         bookingId,
-        amountInRupees:
-          amount,
-        amountSource,
-
-        bookingAmount:
-          booking?.amount ??
-          null,
-
-        totalAmount:
-          booking?.total_amount ??
-          null,
-
-        finalAmount:
-          booking?.final_amount ??
-          null,
-
-        price:
-          booking?.price ??
-          null,
-
-        totalPrice:
-          booking?.total_price ??
-          null,
-
-        fare:
-          booking?.fare ??
-          null,
+        amount,
+        bookingAmount: booking.amount,
+        totalAmount: booking.total_amount,
+        finalAmount: booking.final_amount,
+        price: booking.price,
+        totalPrice: booking.total_price,
+        bookingAmountField: booking.booking_amount,
+        fare: booking.fare,
+        totalFare: booking.total_fare,
+        estimatedFare: booking.estimated_fare,
+        finalFare: booking.final_fare,
+        baseFare: booking.base_fare,
       }
     );
 
-    if (
-      !Number.isFinite(amount) ||
-      amount <= 0
-    ) {
+    if (amount === null) {
       console.error(
-        '[POST /api/bookings/:id/initiate-payment] Invalid payment amount:',
+        '[POST /api/bookings/:id/initiate-payment] No valid booking amount found:',
         {
           bookingId,
-          amount,
-          amountSource,
         }
       );
 
@@ -412,738 +329,420 @@ export async function POST(
         {
           success: false,
           error:
-            'Invalid booking payment amount',
-          code:
-            'INVALID_BOOKING_AMOUNT',
+            'Booking price is not confirmed yet. Please wait until the booking amount is available before making payment.',
+          code: 'BOOKING_AMOUNT_MISSING',
         },
         { status: 400 }
       );
     }
 
-    // ========================================================
-    // 8. FIND EXISTING NON-TERMINAL PAYMENTS
-    // ========================================================
+    if (!Number.isFinite(amount) || amount <= 0) {
+      console.error(
+        '[POST /api/bookings/:id/initiate-payment] Invalid booking amount:',
+        {
+          bookingId,
+          amount,
+        }
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Invalid booking amount',
+          code: 'INVALID_BOOKING_AMOUNT',
+        },
+        { status: 400 }
+      );
+    }
+
+    // =========================================================
+    // 8. CHECK EXISTING NON-TERMINAL PAYMENT
+    // =========================================================
     //
-    // We NEVER reuse incomplete Razorpay checkout data.
+    // This protects against accidental double-clicks/retries.
     //
-    // Old payment:
-    //
-    // created / pending / checkout_started
-    //
-    // without gateway payment ID
-    //
-    // will be closed and replaced with a fresh payment.
-    // ========================================================
+    // We only reuse the existing payment when we have enough
+    // information to build a valid checkout payload.
+    // =========================================================
 
     const {
-      data: existingPayments,
-      error:
-      existingPaymentError,
+      data: existingPayment,
+      error: existingPaymentError,
     } = await supabase
       .from('payments')
       .select('*')
-      .eq(
-        'booking_id',
-        bookingId
-      )
+      .eq('booking_id', bookingId)
       .in('status', [
         'created',
         'checkout_started',
         'pending',
+        'processing',
       ])
-      .order(
-        'created_at',
-        {
-          ascending: false,
-        }
-      )
-      .limit(10);
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    if (
-      existingPaymentError
-    ) {
+    if (existingPaymentError) {
       console.warn(
         '[POST /api/bookings/:id/initiate-payment] Existing payment lookup warning:',
-        {
-          message:
-            existingPaymentError.message,
-          code:
-            existingPaymentError.code,
-        }
+        existingPaymentError.message
       );
     }
 
-    const payments: any[] =
-      Array.isArray(
-        existingPayments
-      )
-        ? existingPayments
-        : [];
+    if (existingPayment) {
+      const existingAmount = parseAmount(existingPayment.amount);
 
-    // ========================================================
-    // 9. HANDLE EXISTING PAYMENTS
-    // ========================================================
+      const gateway =
+        typeof existingPayment.gateway === 'string'
+          ? existingPayment.gateway.toLowerCase()
+          : '';
 
-    if (
-      payments.length > 0
-    ) {
       console.log(
-        '[POST /api/bookings/:id/initiate-payment] Existing non-terminal payments found:',
-        payments.map(
-          (
-            payment: any
-          ) => ({
-            id:
-              payment?.id,
-
-            status:
-              payment?.status,
-
-            amount:
-              payment?.amount,
-
-            gateway:
-              payment?.gateway,
-
-            selectedGateway:
-              payment?.selected_gateway,
-
-            gatewayOrderId:
-              payment?.gateway_order_id,
-
-            gatewayPaymentId:
-              payment?.gateway_payment_id,
-
-            createdAt:
-              payment?.created_at,
-          })
-        )
+        '[POST /api/bookings/:id/initiate-payment] Existing payment found:',
+        {
+          bookingId,
+          paymentId: existingPayment.id,
+          gateway,
+          status: existingPayment.status,
+          gatewayOrderId: existingPayment.gateway_order_id || null,
+        }
       );
 
-      for (
-        const existingPayment of payments
+      // -------------------------------------------------------
+      // Razorpay existing order
+      // -------------------------------------------------------
+
+      if (
+        gateway === 'razorpay' &&
+        existingAmount !== null &&
+        existingPayment.gateway_order_id
       ) {
-        // ----------------------------------------------------
-        // If a gateway payment ID exists, don't create another
-        // payment automatically.
-        // ----------------------------------------------------
-
-        if (
-          existingPayment?.gateway_payment_id
-        ) {
-          console.warn(
-            '[POST /api/bookings/:id/initiate-payment] Existing gateway payment is already processing:',
-            {
-              paymentId:
-                existingPayment?.id,
-
-              gatewayPaymentId:
-                existingPayment?.gateway_payment_id,
-
-              status:
-                existingPayment?.status,
-            }
-          );
-
-          return NextResponse.json(
-            {
-              success: false,
-
-              error:
-                'A payment is already being processed for this booking. Please wait a moment and try again.',
-
-              code:
-                'PAYMENT_ALREADY_PROCESSING',
-
-              payment_id:
-                existingPayment?.id,
-            },
-            { status: 409 }
-          );
-        }
-
-        // ----------------------------------------------------
-        // Old payment has no gateway payment ID.
-        //
-        // It is incomplete/stale and can be superseded.
-        // ----------------------------------------------------
-
-        console.warn(
-          '[POST /api/bookings/:id/initiate-payment] Closing stale payment:',
-          {
-            paymentId:
-              existingPayment?.id,
-
-            status:
-              existingPayment?.status,
-
-            gatewayOrderId:
-              existingPayment?.gateway_order_id,
-          }
+        const checkoutData = buildExistingRazorpayCheckout(
+          existingPayment,
+          existingAmount
         );
 
-        const {
-          error:
-          stalePaymentError,
-        } = await supabase
-          .from('payments')
-          .update({
-            status:
-              'failed',
-
-            failure_reason:
-              'Previous incomplete checkout attempt superseded by a fresh checkout attempt.',
-          })
-          .eq(
-            'id',
-            existingPayment?.id
-          )
-          .in('status', [
-            'created',
-            'checkout_started',
-            'pending',
-          ]);
-
-        if (
-          stalePaymentError
-        ) {
-          console.error(
-            '[POST /api/bookings/:id/initiate-payment] Failed to close stale payment:',
+        if (checkoutData) {
+          console.log(
+            '[POST /api/bookings/:id/initiate-payment] Reusing existing Razorpay order:',
             {
-              paymentId:
-                existingPayment?.id,
-
-              error:
-                stalePaymentError.message,
-
-              code:
-                stalePaymentError.code,
+              bookingId,
+              paymentId: existingPayment.id,
+              orderId: existingPayment.gateway_order_id,
             }
           );
 
-          return NextResponse.json(
-            {
-              success: false,
-
-              error:
-                'Unable to reset the previous payment attempt. Please try again.',
-
-              code:
-                'STALE_PAYMENT_RESET_FAILED',
-            },
-            { status: 500 }
-          );
+          return NextResponse.json({
+            success: true,
+            payment_id: existingPayment.id,
+            checkout_data: checkoutData,
+            amount: existingAmount,
+            is_existing: true,
+          });
         }
+
+        console.warn(
+          '[POST /api/bookings/:id/initiate-payment] Existing Razorpay payment found but checkout data could not be rebuilt. Creating a fresh payment.'
+        );
       }
 
-      console.log(
-        '[POST /api/bookings/:id/initiate-payment] Stale payment attempts cleared.'
+      // -------------------------------------------------------
+      // Do not return incomplete checkout data.
+      //
+      // The previous implementation returned only:
+      //
+      // { order_id: ... }
+      //
+      // which caused the frontend to receive incomplete
+      // Razorpay checkout information.
+      // -------------------------------------------------------
+      console.warn(
+        '[POST /api/bookings/:id/initiate-payment] Existing payment cannot be safely reused. A new payment order will be created.'
       );
     }
 
-    // ========================================================
-    // 10. CUSTOMER PROFILE
-    // ========================================================
+    // =========================================================
+    // 9. GET CUSTOMER PROFILE
+    // =========================================================
 
     const {
       data: profile,
-      error:
-      profileError,
+      error: profileError,
     } = await supabase
       .from('profiles')
-      .select(
-        'full_name, phone, email'
-      )
-      .eq(
-        'id',
-        user.id
-      )
+      .select('full_name, phone, email')
+      .eq('id', user.id)
       .maybeSingle();
 
-    if (
-      profileError &&
-      profileError.code !==
-      'PGRST116'
-    ) {
+    if (profileError && profileError.code !== 'PGRST116') {
       console.warn(
-        '[POST /api/bookings/:id/initiate-payment] Profile lookup warning:',
+        '[POST /api/bookings/:id/initiate-payment] Profile query warning:',
         profileError.message
       );
     }
 
     const customerName =
-      booking?.customer_name ||
+      booking.customer_name ||
       profile?.full_name ||
-      user?.user_metadata
-        ?.full_name ||
+      user.user_metadata?.full_name ||
       'Customer';
 
     const customerPhone =
-      booking?.customer_phone ||
+      booking.customer_phone ||
       profile?.phone ||
-      user?.phone ||
+      user.phone ||
       '';
 
     const customerEmail =
-      booking?.customer_email ||
+      booking.customer_email ||
       profile?.email ||
-      user?.email ||
+      user.email ||
       '';
 
-    // ========================================================
-    // 11. CREATE FRESH PAYMENT
-    // ========================================================
+    // =========================================================
+    // 10. CREATE PAYMENT
+    // =========================================================
 
     console.log(
-      '[POST /api/bookings/:id/initiate-payment] Creating fresh payment:',
+      '[POST /api/bookings/:id/initiate-payment] Creating payment:',
       {
         bookingId,
-
-        userId:
-          user.id,
-
-        amountInRupees:
-          amount,
-
-        expectedRazorpayAmountInPaise:
-          Math.round(
-            amount * 100
-          ),
-
-        currency:
-          'INR',
-
-        paymentMethod:
-          payment_method,
-
-        amountSource,
+        userId: user.id,
+        amount,
+        currency: 'INR',
+        payment_method,
       }
     );
 
-    const result =
-      await PaymentService.createPayment(
-        {
-          user_id:
-            user.id,
+    const result = await PaymentService.createPayment({
+      user_id: user.id,
+      amount,
+      currency: 'INR',
+      payment_method,
+      customer_name: customerName,
+      customer_email: customerEmail,
+      customer_phone: customerPhone,
+      booking_id: bookingId,
 
-          amount,
+      metadata: {
+        service_type:
+          booking.service_type ||
+          booking.transport_service ||
+          null,
 
-          currency:
-            'INR',
+        provider_name:
+          booking.provider_name ||
+          null,
 
-          payment_method,
+        booking_amount_source: 'booking_record',
 
-          customer_name:
-            customerName,
+        booking_id: bookingId,
+      },
+    });
 
-          customer_email:
-            customerEmail,
+    // =========================================================
+    // 11. PAYMENT SERVICE FAILURE
+    // =========================================================
 
-          customer_phone:
-            customerPhone,
-
-          booking_id:
-            bookingId,
-
-          metadata: {
-            service_type:
-              booking?.service_type ||
-              booking?.transport_service ||
-              'Transport',
-
-            provider_name:
-              booking?.provider_name ||
-              'FaabCab',
-
-            amount_source:
-              amountSource,
-
-            faabcab_payment_amount:
-              amount,
-
-            checkout_retry:
-              payments.length >
-              0,
-          },
-        }
-      );
-
-    // ========================================================
-    // 12. PAYMENT SERVICE FAILURE
-    // ========================================================
-
-    if (
-      !result.success
-    ) {
+    if (!result.success) {
       console.error(
         '[POST /api/bookings/:id/initiate-payment] PaymentService failed:',
         {
           bookingId,
-
-          amountInRupees:
-            amount,
-
-          error:
-            result.error,
+          amount,
+          error: result.error,
         }
       );
 
       return NextResponse.json(
         {
           success: false,
-
           error:
             result.error ||
-            'Failed to create payment',
+            'Failed to create payment. Please try again.',
+          code: 'PAYMENT_CREATION_FAILED',
         },
         { status: 500 }
       );
     }
 
-    // ========================================================
-    // 13. CHECKOUT DATA
-    // ========================================================
-    //
-    // IMPORTANT:
-    //
-    // Razorpay returns:
-    //
-    // order.amount = PAISA
-    //
-    // So for ₹500:
-    //
-    // checkoutData.amount = 50000
-    //
-    // DO NOT divide it by 100 before sending it to
-    // Razorpay Checkout.
-    // ========================================================
+    // =========================================================
+    // 12. VALIDATE PAYMENT RESPONSE
+    // =========================================================
 
-    const checkoutData =
-      result.checkout_data as
-      | Record<string, any>
-      | null
-      | undefined;
-
-    const checkoutKey =
-      typeof checkoutData?.key ===
-        'string'
-        ? checkoutData.key.trim()
-        : '';
-
-    const checkoutOrderId =
-      typeof checkoutData?.order_id ===
-        'string'
-        ? checkoutData.order_id.trim()
-        : '';
-
-    /**
-     * Razorpay amount is in PAISE.
-     */
-    const checkoutAmountPaise =
-      Number(
-        checkoutData?.amount
-      );
-
-    const checkoutCurrency =
-      typeof checkoutData?.currency ===
-        'string' &&
-        checkoutData.currency.trim()
-        ? checkoutData.currency.trim()
-        : 'INR';
-
-    console.log(
-      '[POST /api/bookings/:id/initiate-payment] Checkout data received:',
-      {
-        paymentId:
-          result.payment_id,
-
-        hasKey:
-          Boolean(
-            checkoutKey
-          ),
-
-        hasOrderId:
-          Boolean(
-            checkoutOrderId
-          ),
-
-        checkoutAmountPaise,
-
-        checkoutAmountRupees:
-          Number.isFinite(
-            checkoutAmountPaise
-          )
-            ? checkoutAmountPaise /
-            100
-            : null,
-
-        expectedAmountPaise:
-          Math.round(
-            amount * 100
-          ),
-
-        checkoutCurrency,
-      }
-    );
-
-    // ========================================================
-    // 14. STRICT CHECKOUT DATA VALIDATION
-    // ========================================================
-
-    if (
-      !checkoutData ||
-      !checkoutKey ||
-      !checkoutOrderId ||
-      !Number.isFinite(
-        checkoutAmountPaise
-      ) ||
-      checkoutAmountPaise <= 0
-    ) {
+    if (!result.payment_id) {
       console.error(
-        '[POST /api/bookings/:id/initiate-payment] INCOMPLETE CHECKOUT DATA:',
-        {
-          paymentId:
-            result.payment_id,
-
-          checkoutKeys:
-            checkoutData
-              ? Object.keys(
-                checkoutData
-              )
-              : [],
-
-          hasKey:
-            Boolean(
-              checkoutKey
-            ),
-
-          hasOrderId:
-            Boolean(
-              checkoutOrderId
-            ),
-
-          checkoutAmountPaise,
-
-          checkoutCurrency,
-        }
-      );
-
-      return NextResponse.json(
-        {
-          success: false,
-
-          error:
-            'Payment gateway returned incomplete checkout data. Please try again.',
-
-          code:
-            'INCOMPLETE_CHECKOUT_DATA',
-        },
-        { status: 502 }
-      );
-    }
-
-    // ========================================================
-    // 15. VERIFY AMOUNT CONSISTENCY
-    // ========================================================
-    //
-    // BOTH SIDES ARE NOW IN PAISE:
-    //
-    // expected:
-    // ₹500 × 100 = 50000 paise
-    //
-    // Razorpay:
-    // order.amount = 50000 paise
-    //
-    // Therefore:
-    //
-    // 50000 === 50000
-    // ========================================================
-
-    const expectedAmountPaise =
-      Math.round(
-        amount * 100
-      );
-
-    if (
-      checkoutAmountPaise !==
-      expectedAmountPaise
-    ) {
-      console.error(
-        '[POST /api/bookings/:id/initiate-payment] Gateway amount mismatch:',
-        {
-          paymentId:
-            result.payment_id,
-
-          expectedAmountRupees:
-            amount,
-
-          expectedAmountPaise,
-
-          checkoutAmountPaise,
-
-          checkoutAmountRupees:
-            checkoutAmountPaise /
-            100,
-
-          orderId:
-            checkoutOrderId,
-        }
-      );
-
-      return NextResponse.json(
-        {
-          success: false,
-
-          error:
-            'Payment amount mismatch. Please try again.',
-
-          code:
-            'CHECKOUT_AMOUNT_MISMATCH',
-        },
-        { status: 502 }
-      );
-    }
-
-    // ========================================================
-    // 16. SAVE PAYMENT ID TO BOOKING
-    // ========================================================
-
-    const {
-      error:
-      bookingUpdateError,
-    } = await supabase
-      .from('bookings')
-      .update({
-        payment_id:
-          result.payment_id,
-      })
-      .eq(
-        'id',
-        bookingId
-      );
-
-    if (
-      bookingUpdateError
-    ) {
-      console.error(
-        '[POST /api/bookings/:id/initiate-payment] Failed to update booking payment_id:',
+        '[POST /api/bookings/:id/initiate-payment] Payment created without payment_id:',
         {
           bookingId,
-
-          paymentId:
-            result.payment_id,
-
-          error:
-            bookingUpdateError.message,
-
-          code:
-            bookingUpdateError.code,
         }
       );
 
-      /**
-       * Do not block checkout.
-       *
-       * The payment itself was created successfully and the
-       * gateway checkout data is valid.
-       */
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Payment was created without a payment reference.',
+          code: 'PAYMENT_ID_MISSING',
+        },
+        { status: 500 }
+      );
     }
 
-    // ========================================================
-    // 17. FINAL CHECKOUT RESPONSE
-    // ========================================================
-    //
-    // IMPORTANT:
-    //
-    // checkout_data.amount remains in PAISE.
-    //
-    // For ₹500:
-    //
-    // amount = 50000
-    //
-    // This is exactly what Razorpay Checkout expects.
-    // ========================================================
+    if (!result.checkout_data) {
+      console.error(
+        '[POST /api/bookings/:id/initiate-payment] Missing checkout_data:',
+        {
+          bookingId,
+          paymentId: result.payment_id,
+        }
+      );
 
-    const finalCheckoutData = {
-      ...checkoutData,
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Payment order was created but checkout information is missing.',
+          code: 'CHECKOUT_DATA_MISSING',
+        },
+        { status: 500 }
+      );
+    }
 
-      key:
-        checkoutKey,
+    // =========================================================
+    // 13. VALIDATE RAZORPAY CHECKOUT DATA
+    // =========================================================
 
-      order_id:
-        checkoutOrderId,
+    const checkoutData = result.checkout_data;
 
-      amount:
-        checkoutAmountPaise,
+    if (checkoutData.key && !checkoutData.order_id) {
+      console.error(
+        '[POST /api/bookings/:id/initiate-payment] Razorpay checkout_data missing order_id:',
+        {
+          bookingId,
+          paymentId: result.payment_id,
+          checkoutData,
+        }
+      );
 
-      currency:
-        checkoutCurrency,
-    };
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Razorpay order was created but the order ID is missing.',
+          code: 'RAZORPAY_ORDER_ID_MISSING',
+        },
+        { status: 500 }
+      );
+    }
+
+    if (checkoutData.key) {
+      const checkoutAmountPaise = Number(checkoutData.amount);
+
+      const expectedAmountPaise = Math.round(amount * 100);
+
+      if (
+        !Number.isFinite(checkoutAmountPaise) ||
+        checkoutAmountPaise <= 0
+      ) {
+        console.error(
+          '[POST /api/bookings/:id/initiate-payment] Invalid Razorpay checkout amount:',
+          {
+            bookingId,
+            paymentId: result.payment_id,
+            checkoutAmount: checkoutData.amount,
+          }
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Invalid Razorpay payment amount.',
+            code: 'INVALID_RAZORPAY_AMOUNT',
+          },
+          { status: 500 }
+        );
+      }
+
+      if (checkoutAmountPaise !== expectedAmountPaise) {
+        console.error(
+          '[POST /api/bookings/:id/initiate-payment] Razorpay amount mismatch:',
+          {
+            bookingId,
+            paymentId: result.payment_id,
+            expectedAmountPaise,
+            checkoutAmountPaise,
+          }
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              'Payment amount mismatch. Please restart the payment.',
+            code: 'RAZORPAY_AMOUNT_MISMATCH',
+          },
+          { status: 500 }
+        );
+      }
+    }
+
+    // =========================================================
+    // 14. IMPORTANT
+    // =========================================================
+    //
+    // DO NOT update:
+    //
+    // bookings.payment_id
+    //
+    // because that column does not exist in the current
+    // bookings schema.
+    //
+    // The payment is already linked through:
+    //
+    // payments.booking_id = bookingId
+    //
+    // PaymentService and webhook processing use that relation.
+    //
+    // This removes the PGRST204 error permanently.
+    // =========================================================
 
     console.log(
       '[POST /api/bookings/:id/initiate-payment] PAYMENT CHECKOUT READY:',
       {
         bookingId,
-
-        paymentId:
-          result.payment_id,
-
-        orderId:
-          checkoutOrderId,
-
-        amountInRupees:
-          amount,
-
-        amountInPaise:
-          checkoutAmountPaise,
-
-        currency:
-          checkoutCurrency,
+        paymentId: result.payment_id,
+        amount,
+        gatewayOrderId:
+          checkoutData.order_id ||
+          checkoutData.order_token ||
+          null,
       }
     );
 
+    // =========================================================
+    // 15. FINAL RESPONSE
+    // =========================================================
+
     return NextResponse.json({
       success: true,
-
-      payment_id:
-        result.payment_id,
-
-      checkout_data:
-        finalCheckoutData,
-
-      /**
-       * Top-level amount is kept in RUPEES for application
-       * level display/logic.
-       */
+      payment_id: result.payment_id,
+      checkout_data: checkoutData,
       amount,
-
-      currency:
-        checkoutCurrency,
+      is_existing: false,
     });
   } catch (error: any) {
     console.error(
       '[POST /api/bookings/:id/initiate-payment] Unexpected error:',
-      {
-        bookingId,
-
-        userId:
-          user?.id,
-
-        message:
-          error?.message,
-
-        stack:
-          error?.stack,
-      }
+      error
     );
 
     return NextResponse.json(
       {
         success: false,
-
         error:
           error?.message ||
-          'Payment service temporarily unavailable. Please try again.',
+          'Unable to initiate payment. Please try again.',
+        code: 'PAYMENT_INITIATION_ERROR',
       },
       { status: 500 }
     );
