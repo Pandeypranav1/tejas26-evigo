@@ -16,7 +16,8 @@ import { PaymentMethod } from '@/lib/payment/types';
  * Until dynamic pricing is connected to the booking record,
  * the current confirmed FaabCab payment amount is ₹500.
  *
- * This value is SERVER-SIDE.
+ * IMPORTANT:
+ * This is SERVER-SIDE and is never trusted from the browser.
  */
 const FAABCAB_PAYMENT_AMOUNT = 500;
 
@@ -29,15 +30,24 @@ const VALID_PAYMENT_METHODS = new Set<PaymentMethod>([
 ]);
 
 /**
- * Safely convert a possible amount into a positive number.
+ * Safely convert a possible rupee amount into a positive number.
+ *
+ * This helper is used for DATABASE amounts, which are stored
+ * in rupees.
  */
-function parseAmount(value: unknown): number | null {
-  if (value === null || value === undefined) {
+function parseRupeeAmount(
+  value: unknown
+): number | null {
+  if (
+    value === null ||
+    value === undefined
+  ) {
     return null;
   }
 
   if (typeof value === 'number') {
-    return Number.isFinite(value) && value > 0
+    return Number.isFinite(value) &&
+      value > 0
       ? value
       : null;
   }
@@ -54,7 +64,8 @@ function parseAmount(value: unknown): number | null {
 
     const parsed = Number(cleaned);
 
-    return Number.isFinite(parsed) && parsed > 0
+    return Number.isFinite(parsed) &&
+      parsed > 0
       ? parsed
       : null;
   }
@@ -63,7 +74,7 @@ function parseAmount(value: unknown): number | null {
 }
 
 /**
- * Validate requested payment method.
+ * Validate payment method.
  */
 function getValidatedPaymentMethod(
   value: unknown
@@ -72,7 +83,8 @@ function getValidatedPaymentMethod(
     return null;
   }
 
-  const normalized = value.trim().toLowerCase();
+  const normalized =
+    value.trim().toLowerCase();
 
   return VALID_PAYMENT_METHODS.has(
     normalized as PaymentMethod
@@ -82,11 +94,21 @@ function getValidatedPaymentMethod(
 }
 
 /**
- * Resolve payment amount.
+ * Resolve booking amount in RUPEES.
  *
- * Priority:
- * 1. Existing amount stored in booking
- * 2. Current FaabCab server-side ₹500 amount
+ * Example:
+ *
+ * booking.amount = 500
+ *
+ * returns:
+ *
+ * {
+ *   amount: 500,
+ *   source: "booking.amount"
+ * }
+ *
+ * If no booking amount exists, current FaabCab
+ * server-side amount of ₹500 is used.
  */
 function resolveBookingAmount(
   booking: Record<string, any>
@@ -108,8 +130,13 @@ function resolveBookingAmount(
     'base_fare',
   ];
 
-  for (const field of possibleAmountFields) {
-    const parsed = parseAmount(booking?.[field]);
+  for (
+    const field of possibleAmountFields
+  ) {
+    const parsed =
+      parseRupeeAmount(
+        booking?.[field]
+      );
 
     if (parsed !== null) {
       return {
@@ -120,8 +147,10 @@ function resolveBookingAmount(
   }
 
   return {
-    amount: FAABCAB_PAYMENT_AMOUNT,
-    source: 'faabcab-server-default',
+    amount:
+      FAABCAB_PAYMENT_AMOUNT,
+    source:
+      'faabcab-server-default',
   };
 }
 
@@ -132,10 +161,14 @@ export async function POST(
   {
     params,
   }: {
-    params: Promise<{ id: string }>;
+    params: Promise<{
+      id: string;
+    }>;
   }
 ) {
-  const { id: bookingId } = await params;
+  const {
+    id: bookingId,
+  } = await params;
 
   let user: any = null;
 
@@ -144,7 +177,8 @@ export async function POST(
     // 1. AUTHENTICATION
     // ========================================================
 
-    const authResult = await getAuthenticatedUser();
+    const authResult =
+      await getAuthenticatedUser();
 
     user = authResult.user;
 
@@ -156,7 +190,8 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          error: 'Authentication required',
+          error:
+            'Authentication required',
         },
         { status: 401 }
       );
@@ -169,7 +204,8 @@ export async function POST(
     let body: any = {};
 
     try {
-      body = await request.json();
+      body =
+        await request.json();
     } catch {
       body = {};
     }
@@ -180,36 +216,31 @@ export async function POST(
 
     const payment_method =
       getValidatedPaymentMethod(
-        body?.payment_method ?? 'upi'
+        body?.payment_method ??
+        'upi'
       );
 
     if (!payment_method) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Unsupported payment method',
+          error:
+            'Unsupported payment method',
         },
         { status: 400 }
       );
     }
 
     /**
-     * IMPORTANT:
+     * The current generated Supabase types can incorrectly
+     * infer GenericStringError for these payment queries.
      *
-     * We intentionally type the admin Supabase client as any
-     * in this payment route.
-     *
-     * Your generated Supabase types are currently returning
-     * GenericStringError for the payments table query.
-     *
-     * That causes errors such as:
-     *
-     * Property 'id' does not exist on type 'GenericStringError'
-     *
-     * The runtime database query itself is valid, so this
-     * avoids the incorrect generated-type inference.
+     * We intentionally use an admin client typed as any in
+     * this route so the runtime query result is not blocked
+     * by the generated type issue.
      */
-    const supabase: any = createAdminClient();
+    const supabase: any =
+      createAdminClient();
 
     // ========================================================
     // 4. LOAD BOOKING
@@ -224,22 +255,30 @@ export async function POST(
       .eq('id', bookingId)
       .single();
 
-    if (bookingError || !booking) {
+    if (
+      bookingError ||
+      !booking
+    ) {
       console.error(
         '[POST /api/bookings/:id/initiate-payment] Booking lookup failed:',
         {
           bookingId,
-          error: bookingError?.message,
-          code: bookingError?.code,
-          details: bookingError?.details,
-          hint: bookingError?.hint,
+          error:
+            bookingError?.message,
+          code:
+            bookingError?.code,
+          details:
+            bookingError?.details,
+          hint:
+            bookingError?.hint,
         }
       );
 
       return NextResponse.json(
         {
           success: false,
-          error: 'Booking not found',
+          error:
+            'Booking not found',
         },
         { status: 404 }
       );
@@ -249,20 +288,26 @@ export async function POST(
     // 5. OWNERSHIP CHECK
     // ========================================================
 
-    if (booking.client_id !== user.id) {
+    if (
+      booking.client_id !==
+      user.id
+    ) {
       console.error(
         '[POST /api/bookings/:id/initiate-payment] Ownership mismatch:',
         {
           bookingId,
-          bookingClientId: booking.client_id,
-          userId: user.id,
+          bookingClientId:
+            booking.client_id,
+          userId:
+            user.id,
         }
       );
 
       return NextResponse.json(
         {
           success: false,
-          error: 'Not authorized',
+          error:
+            'Not authorized',
         },
         { status: 403 }
       );
@@ -272,7 +317,10 @@ export async function POST(
     // 6. ALREADY PAID CHECK
     // ========================================================
 
-    if (booking.payment_status === 'paid') {
+    if (
+      booking.payment_status ===
+      'paid'
+    ) {
       console.log(
         '[POST /api/bookings/:id/initiate-payment] Booking already paid:',
         bookingId
@@ -281,8 +329,10 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          error: 'Booking already paid',
-          code: 'BOOKING_ALREADY_PAID',
+          error:
+            'Booking already paid',
+          code:
+            'BOOKING_ALREADY_PAID',
         },
         { status: 400 }
       );
@@ -291,32 +341,57 @@ export async function POST(
     // ========================================================
     // 7. RESOLVE PAYMENT AMOUNT
     // ========================================================
+    //
+    // IMPORTANT:
+    //
+    // This value is in RUPEES.
+    //
+    // ₹500 here will become 50000 paise inside the
+    // Razorpay adapter.
+    // ========================================================
 
     const {
       amount,
       source: amountSource,
-    } = resolveBookingAmount(
-      booking as Record<string, any>
-    );
+    } =
+      resolveBookingAmount(
+        booking as Record<
+          string,
+          any
+        >
+      );
 
     console.log(
       '[POST /api/bookings/:id/initiate-payment] Payment amount resolved:',
       {
         bookingId,
-        amount,
+        amountInRupees:
+          amount,
         amountSource,
+
         bookingAmount:
-          booking?.amount ?? null,
+          booking?.amount ??
+          null,
+
         totalAmount:
-          booking?.total_amount ?? null,
+          booking?.total_amount ??
+          null,
+
         finalAmount:
-          booking?.final_amount ?? null,
+          booking?.final_amount ??
+          null,
+
         price:
-          booking?.price ?? null,
+          booking?.price ??
+          null,
+
         totalPrice:
-          booking?.total_price ?? null,
+          booking?.total_price ??
+          null,
+
         fare:
-          booking?.fare ?? null,
+          booking?.fare ??
+          null,
       }
     );
 
@@ -336,8 +411,10 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          error: 'Invalid booking payment amount',
-          code: 'INVALID_BOOKING_AMOUNT',
+          error:
+            'Invalid booking payment amount',
+          code:
+            'INVALID_BOOKING_AMOUNT',
         },
         { status: 400 }
       );
@@ -347,35 +424,44 @@ export async function POST(
     // 8. FIND EXISTING NON-TERMINAL PAYMENTS
     // ========================================================
     //
-    // IMPORTANT:
+    // We NEVER reuse incomplete Razorpay checkout data.
     //
-    // We do NOT reuse old checkout_data.
+    // Old payment:
     //
-    // An old payment may only contain gateway_order_id and
-    // therefore cannot safely reconstruct a complete Razorpay
-    // Checkout configuration.
+    // created / pending / checkout_started
     //
-    // We close incomplete payments and create a fresh payment.
+    // without gateway payment ID
+    //
+    // will be closed and replaced with a fresh payment.
     // ========================================================
 
     const {
       data: existingPayments,
-      error: existingPaymentError,
+      error:
+      existingPaymentError,
     } = await supabase
       .from('payments')
       .select('*')
-      .eq('booking_id', bookingId)
+      .eq(
+        'booking_id',
+        bookingId
+      )
       .in('status', [
         'created',
         'checkout_started',
         'pending',
       ])
-      .order('created_at', {
-        ascending: false,
-      })
+      .order(
+        'created_at',
+        {
+          ascending: false,
+        }
+      )
       .limit(10);
 
-    if (existingPaymentError) {
+    if (
+      existingPaymentError
+    ) {
       console.warn(
         '[POST /api/bookings/:id/initiate-payment] Existing payment lookup warning:',
         {
@@ -388,7 +474,9 @@ export async function POST(
     }
 
     const payments: any[] =
-      Array.isArray(existingPayments)
+      Array.isArray(
+        existingPayments
+      )
         ? existingPayments
         : [];
 
@@ -396,35 +484,48 @@ export async function POST(
     // 9. HANDLE EXISTING PAYMENTS
     // ========================================================
 
-    if (payments.length > 0) {
+    if (
+      payments.length > 0
+    ) {
       console.log(
         '[POST /api/bookings/:id/initiate-payment] Existing non-terminal payments found:',
         payments.map(
-          (payment: any) => ({
+          (
+            payment: any
+          ) => ({
             id:
               payment?.id,
+
             status:
               payment?.status,
+
             amount:
               payment?.amount,
+
             gateway:
               payment?.gateway,
+
             selectedGateway:
               payment?.selected_gateway,
+
             gatewayOrderId:
               payment?.gateway_order_id,
+
             gatewayPaymentId:
               payment?.gateway_payment_id,
+
             createdAt:
               payment?.created_at,
           })
         )
       );
 
-      for (const existingPayment of payments) {
+      for (
+        const existingPayment of payments
+      ) {
         // ----------------------------------------------------
-        // If gateway_payment_id exists, the payment may already
-        // be processing at Razorpay.
+        // If a gateway payment ID exists, don't create another
+        // payment automatically.
         // ----------------------------------------------------
 
         if (
@@ -435,8 +536,10 @@ export async function POST(
             {
               paymentId:
                 existingPayment?.id,
+
               gatewayPaymentId:
                 existingPayment?.gateway_payment_id,
+
               status:
                 existingPayment?.status,
             }
@@ -445,10 +548,13 @@ export async function POST(
           return NextResponse.json(
             {
               success: false,
+
               error:
                 'A payment is already being processed for this booking. Please wait a moment and try again.',
+
               code:
                 'PAYMENT_ALREADY_PROCESSING',
+
               payment_id:
                 existingPayment?.id,
             },
@@ -457,8 +563,9 @@ export async function POST(
         }
 
         // ----------------------------------------------------
-        // No gateway payment ID means incomplete/stale payment.
-        // Close it before creating a fresh payment.
+        // Old payment has no gateway payment ID.
+        //
+        // It is incomplete/stale and can be superseded.
         // ----------------------------------------------------
 
         console.warn(
@@ -466,19 +573,24 @@ export async function POST(
           {
             paymentId:
               existingPayment?.id,
+
             status:
               existingPayment?.status,
+
             gatewayOrderId:
               existingPayment?.gateway_order_id,
           }
         );
 
         const {
-          error: stalePaymentError,
+          error:
+          stalePaymentError,
         } = await supabase
           .from('payments')
           .update({
-            status: 'failed',
+            status:
+              'failed',
+
             failure_reason:
               'Previous incomplete checkout attempt superseded by a fresh checkout attempt.',
           })
@@ -492,14 +604,18 @@ export async function POST(
             'pending',
           ]);
 
-        if (stalePaymentError) {
+        if (
+          stalePaymentError
+        ) {
           console.error(
             '[POST /api/bookings/:id/initiate-payment] Failed to close stale payment:',
             {
               paymentId:
                 existingPayment?.id,
+
               error:
                 stalePaymentError.message,
+
               code:
                 stalePaymentError.code,
             }
@@ -508,8 +624,10 @@ export async function POST(
           return NextResponse.json(
             {
               success: false,
+
               error:
                 'Unable to reset the previous payment attempt. Please try again.',
+
               code:
                 'STALE_PAYMENT_RESET_FAILED',
             },
@@ -529,18 +647,23 @@ export async function POST(
 
     const {
       data: profile,
-      error: profileError,
+      error:
+      profileError,
     } = await supabase
       .from('profiles')
       .select(
         'full_name, phone, email'
       )
-      .eq('id', user.id)
+      .eq(
+        'id',
+        user.id
+      )
       .maybeSingle();
 
     if (
       profileError &&
-      profileError.code !== 'PGRST116'
+      profileError.code !==
+      'PGRST116'
     ) {
       console.warn(
         '[POST /api/bookings/:id/initiate-payment] Profile lookup warning:',
@@ -551,7 +674,8 @@ export async function POST(
     const customerName =
       booking?.customer_name ||
       profile?.full_name ||
-      user?.user_metadata?.full_name ||
+      user?.user_metadata
+        ?.full_name ||
       'Customer';
 
     const customerPhone =
@@ -574,72 +698,91 @@ export async function POST(
       '[POST /api/bookings/:id/initiate-payment] Creating fresh payment:',
       {
         bookingId,
+
         userId:
           user.id,
-        amount,
+
+        amountInRupees:
+          amount,
+
+        expectedRazorpayAmountInPaise:
+          Math.round(
+            amount * 100
+          ),
+
         currency:
           'INR',
+
         paymentMethod:
           payment_method,
+
         amountSource,
       }
     );
 
     const result =
-      await PaymentService.createPayment({
-        user_id:
-          user.id,
+      await PaymentService.createPayment(
+        {
+          user_id:
+            user.id,
 
-        amount,
+          amount,
 
-        currency:
-          'INR',
+          currency:
+            'INR',
 
-        payment_method,
+          payment_method,
 
-        customer_name:
-          customerName,
+          customer_name:
+            customerName,
 
-        customer_email:
-          customerEmail,
+          customer_email:
+            customerEmail,
 
-        customer_phone:
-          customerPhone,
+          customer_phone:
+            customerPhone,
 
-        booking_id:
-          bookingId,
+          booking_id:
+            bookingId,
 
-        metadata: {
-          service_type:
-            booking?.service_type ||
-            booking?.transport_service ||
-            'Transport',
+          metadata: {
+            service_type:
+              booking?.service_type ||
+              booking?.transport_service ||
+              'Transport',
 
-          provider_name:
-            booking?.provider_name ||
-            'FaabCab',
+            provider_name:
+              booking?.provider_name ||
+              'FaabCab',
 
-          amount_source:
-            amountSource,
+            amount_source:
+              amountSource,
 
-          faabcab_payment_amount:
-            amount,
+            faabcab_payment_amount:
+              amount,
 
-          checkout_retry:
-            payments.length > 0,
-        },
-      });
+            checkout_retry:
+              payments.length >
+              0,
+          },
+        }
+      );
 
     // ========================================================
     // 12. PAYMENT SERVICE FAILURE
     // ========================================================
 
-    if (!result.success) {
+    if (
+      !result.success
+    ) {
       console.error(
         '[POST /api/bookings/:id/initiate-payment] PaymentService failed:',
         {
           bookingId,
-          amount,
+
+          amountInRupees:
+            amount,
+
           error:
             result.error,
         }
@@ -648,6 +791,7 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
+
           error:
             result.error ||
             'Failed to create payment',
@@ -659,6 +803,20 @@ export async function POST(
     // ========================================================
     // 13. CHECKOUT DATA
     // ========================================================
+    //
+    // IMPORTANT:
+    //
+    // Razorpay returns:
+    //
+    // order.amount = PAISA
+    //
+    // So for ₹500:
+    //
+    // checkoutData.amount = 50000
+    //
+    // DO NOT divide it by 100 before sending it to
+    // Razorpay Checkout.
+    // ========================================================
 
     const checkoutData =
       result.checkout_data as
@@ -667,7 +825,8 @@ export async function POST(
       | undefined;
 
     const checkoutKey =
-      typeof checkoutData?.key === 'string'
+      typeof checkoutData?.key ===
+        'string'
         ? checkoutData.key.trim()
         : '';
 
@@ -677,8 +836,11 @@ export async function POST(
         ? checkoutData.order_id.trim()
         : '';
 
-    const checkoutAmount =
-      parseAmount(
+    /**
+     * Razorpay amount is in PAISE.
+     */
+    const checkoutAmountPaise =
+      Number(
         checkoutData?.amount
       );
 
@@ -690,46 +852,78 @@ export async function POST(
         : 'INR';
 
     console.log(
-      '[POST /api/bookings/:id/initiate-payment] Checkout data validation:',
+      '[POST /api/bookings/:id/initiate-payment] Checkout data received:',
       {
         paymentId:
           result.payment_id,
+
         hasKey:
-          Boolean(checkoutKey),
+          Boolean(
+            checkoutKey
+          ),
+
         hasOrderId:
-          Boolean(checkoutOrderId),
-        checkoutAmount,
+          Boolean(
+            checkoutOrderId
+          ),
+
+        checkoutAmountPaise,
+
+        checkoutAmountRupees:
+          Number.isFinite(
+            checkoutAmountPaise
+          )
+            ? checkoutAmountPaise /
+            100
+            : null,
+
+        expectedAmountPaise:
+          Math.round(
+            amount * 100
+          ),
+
         checkoutCurrency,
       }
     );
 
     // ========================================================
-    // 14. NEVER RETURN INVALID CHECKOUT DATA
+    // 14. STRICT CHECKOUT DATA VALIDATION
     // ========================================================
 
     if (
       !checkoutData ||
       !checkoutKey ||
       !checkoutOrderId ||
-      checkoutAmount === null ||
-      checkoutAmount <= 0
+      !Number.isFinite(
+        checkoutAmountPaise
+      ) ||
+      checkoutAmountPaise <= 0
     ) {
       console.error(
         '[POST /api/bookings/:id/initiate-payment] INCOMPLETE CHECKOUT DATA:',
         {
           paymentId:
             result.payment_id,
+
           checkoutKeys:
             checkoutData
               ? Object.keys(
                 checkoutData
               )
               : [],
+
           hasKey:
-            Boolean(checkoutKey),
+            Boolean(
+              checkoutKey
+            ),
+
           hasOrderId:
-            Boolean(checkoutOrderId),
-          checkoutAmount,
+            Boolean(
+              checkoutOrderId
+            ),
+
+          checkoutAmountPaise,
+
           checkoutCurrency,
         }
       );
@@ -737,8 +931,10 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
+
           error:
             'Payment gateway returned incomplete checkout data. Please try again.',
+
           code:
             'INCOMPLETE_CHECKOUT_DATA',
         },
@@ -749,23 +945,46 @@ export async function POST(
     // ========================================================
     // 15. VERIFY AMOUNT CONSISTENCY
     // ========================================================
+    //
+    // BOTH SIDES ARE NOW IN PAISE:
+    //
+    // expected:
+    // ₹500 × 100 = 50000 paise
+    //
+    // Razorpay:
+    // order.amount = 50000 paise
+    //
+    // Therefore:
+    //
+    // 50000 === 50000
+    // ========================================================
 
-    if (
-      Math.round(
-        checkoutAmount * 100
-      ) !==
+    const expectedAmountPaise =
       Math.round(
         amount * 100
-      )
+      );
+
+    if (
+      checkoutAmountPaise !==
+      expectedAmountPaise
     ) {
       console.error(
         '[POST /api/bookings/:id/initiate-payment] Gateway amount mismatch:',
         {
           paymentId:
             result.payment_id,
-          expectedAmount:
+
+          expectedAmountRupees:
             amount,
-          checkoutAmount,
+
+          expectedAmountPaise,
+
+          checkoutAmountPaise,
+
+          checkoutAmountRupees:
+            checkoutAmountPaise /
+            100,
+
           orderId:
             checkoutOrderId,
         }
@@ -774,8 +993,10 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
+
           error:
             'Payment amount mismatch. Please try again.',
+
           code:
             'CHECKOUT_AMOUNT_MISMATCH',
         },
@@ -788,7 +1009,8 @@ export async function POST(
     // ========================================================
 
     const {
-      error: bookingUpdateError,
+      error:
+      bookingUpdateError,
     } = await supabase
       .from('bookings')
       .update({
@@ -800,28 +1022,46 @@ export async function POST(
         bookingId
       );
 
-    if (bookingUpdateError) {
+    if (
+      bookingUpdateError
+    ) {
       console.error(
         '[POST /api/bookings/:id/initiate-payment] Failed to update booking payment_id:',
         {
           bookingId,
+
           paymentId:
             result.payment_id,
+
           error:
             bookingUpdateError.message,
+
           code:
             bookingUpdateError.code,
         }
       );
 
-      // Do not block payment.
-      //
-      // The payment itself has already been created and the
-      // checkout data is valid.
+      /**
+       * Do not block checkout.
+       *
+       * The payment itself was created successfully and the
+       * gateway checkout data is valid.
+       */
     }
 
     // ========================================================
-    // 17. FINAL RESPONSE
+    // 17. FINAL CHECKOUT RESPONSE
+    // ========================================================
+    //
+    // IMPORTANT:
+    //
+    // checkout_data.amount remains in PAISE.
+    //
+    // For ₹500:
+    //
+    // amount = 50000
+    //
+    // This is exactly what Razorpay Checkout expects.
     // ========================================================
 
     const finalCheckoutData = {
@@ -834,7 +1074,7 @@ export async function POST(
         checkoutOrderId,
 
       amount:
-        checkoutAmount,
+        checkoutAmountPaise,
 
       currency:
         checkoutCurrency,
@@ -844,12 +1084,19 @@ export async function POST(
       '[POST /api/bookings/:id/initiate-payment] PAYMENT CHECKOUT READY:',
       {
         bookingId,
+
         paymentId:
           result.payment_id,
+
         orderId:
           checkoutOrderId,
-        amount:
-          checkoutAmount,
+
+        amountInRupees:
+          amount,
+
+        amountInPaise:
+          checkoutAmountPaise,
+
         currency:
           checkoutCurrency,
       }
@@ -864,8 +1111,11 @@ export async function POST(
       checkout_data:
         finalCheckoutData,
 
-      amount:
-        checkoutAmount,
+      /**
+       * Top-level amount is kept in RUPEES for application
+       * level display/logic.
+       */
+      amount,
 
       currency:
         checkoutCurrency,
@@ -875,10 +1125,13 @@ export async function POST(
       '[POST /api/bookings/:id/initiate-payment] Unexpected error:',
       {
         bookingId,
+
         userId:
           user?.id,
+
         message:
           error?.message,
+
         stack:
           error?.stack,
       }
@@ -887,6 +1140,7 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
+
         error:
           error?.message ||
           'Payment service temporarily unavailable. Please try again.',
