@@ -1,95 +1,443 @@
 import { NextResponse } from 'next/server';
-import { getAuthenticatedUser } from '@/lib/server';
+
 import { createAdminClient } from '@/lib/supabase';
+
 import { createGatewayAdapter } from '@/lib/payment/adapters';
+
 import { PaymentService } from '@/lib/payment/service';
 
 export const runtime = 'nodejs';
 
 export async function POST(request: Request) {
   try {
-    // Authentication required - prevent unauthorized payment verification
-    const { user } = await getAuthenticatedUser();
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'Authentication required' }, { status: 401 });
-    }
+    // ============================================================
+    // 1. READ REQUEST BODY
+    // ============================================================
 
-    const body = await request.json();
-    const { payment_id, gateway_payment_id, signature } = body;
+    let body: any;
 
-    if (!payment_id || !gateway_payment_id) {
+    try {
+      body = await request.json();
+    } catch (error) {
+      console.error('[Payment Verify] Invalid JSON body:', error);
+
       return NextResponse.json(
-        { success: false, error: 'Missing required fields: payment_id, gateway_payment_id' },
+        {
+          success: false,
+          error: 'Invalid request body',
+        },
         { status: 400 }
       );
     }
 
+    const paymentId =
+      typeof body?.payment_id === 'string'
+        ? body.payment_id.trim()
+        : '';
+
+    const gatewayPaymentId =
+      typeof body?.gateway_payment_id === 'string'
+        ? body.gateway_payment_id.trim()
+        : '';
+
+    const gatewayOrderId =
+      typeof body?.gateway_order_id === 'string'
+        ? body.gateway_order_id.trim()
+        : '';
+
+    const signature =
+      typeof body?.signature === 'string'
+        ? body.signature.trim()
+        : '';
+
+    console.log('[Payment Verify] Request received:', {
+      paymentId: paymentId || null,
+      gatewayPaymentId: gatewayPaymentId || null,
+      gatewayOrderId: gatewayOrderId || null,
+      hasSignature: Boolean(signature),
+    });
+
+    // ============================================================
+    // 2. VALIDATE REQUIRED FIELDS
+    // ============================================================
+
+    if (!paymentId) {
+      console.error('[Payment Verify] Missing payment_id');
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Missing payment_id',
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!gatewayPaymentId) {
+      console.error('[Payment Verify] Missing gateway_payment_id');
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Missing gateway_payment_id',
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!gatewayOrderId) {
+      console.error('[Payment Verify] Missing gateway_order_id');
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Missing gateway_order_id',
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!signature) {
+      console.error('[Payment Verify] Missing Razorpay signature');
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Missing Razorpay payment signature',
+        },
+        { status: 400 }
+      );
+    }
+
+    // ============================================================
+    // 3. LOAD INTERNAL PAYMENT
+    // ============================================================
+
     const supabase = createAdminClient();
 
-    // Get payment details
-    const { data: payment } = await supabase
+    const {
+      data: payment,
+      error: paymentLookupError,
+    } = await supabase
       .from('payments')
       .select('*')
-      .eq('id', payment_id)
-      .single();
+      .eq('id', paymentId)
+      .maybeSingle();
+
+    if (paymentLookupError) {
+      console.error(
+        '[Payment Verify] Failed to load payment:',
+        {
+          code: paymentLookupError.code,
+          message: paymentLookupError.message,
+          details: paymentLookupError.details,
+          hint: paymentLookupError.hint,
+          paymentId,
+        }
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Unable to load payment record',
+          details: paymentLookupError.message,
+        },
+        { status: 500 }
+      );
+    }
 
     if (!payment) {
+      console.error(
+        '[Payment Verify] Internal payment not found:',
+        paymentId
+      );
+
       return NextResponse.json(
-        { success: false, error: 'Payment not found' },
+        {
+          success: false,
+          error: 'Payment record not found',
+        },
         { status: 404 }
       );
     }
 
-    // Verify user owns this payment
-    if (payment.user_id !== user.id) {
-      return NextResponse.json(
-        { success: false, error: 'Not authorized to verify this payment' },
-        { status: 403 }
-      );
-    }
-
-    if (!payment.selected_gateway || !payment.gateway_order_id) {
-      return NextResponse.json(
-        { success: false, error: 'Payment not properly initialized' },
-        { status: 400 }
-      );
-    }
-
-    // Verify payment with gateway
-    const adapter = createGatewayAdapter(payment.selected_gateway as any);
-    const verifyResult = await adapter.verifyPayment({
-      gateway_order_id: payment.gateway_order_id,
-      gateway_payment_id,
-      signature,
+    console.log('[Payment Verify] Internal payment found:', {
+      paymentId: payment.id,
+      status: payment.status,
+      gateway: payment.gateway,
+      selectedGateway: payment.selected_gateway,
+      storedGatewayOrderId: payment.gateway_order_id || null,
+      storedGatewayPaymentId:
+        payment.gateway_payment_id || null,
     });
 
-    if (!verifyResult.success) {
-      await PaymentService.processFailedPayment(payment_id, verifyResult.error || 'Verification failed');
+    // ============================================================
+    // 4. IDEMPOTENCY
+    //
+    // Webhook can reach us before the browser calls /verify.
+    // If webhook already marked the payment successful,
+    // don't return an error.
+    // ============================================================
+
+    if (
+      payment.status === 'success' ||
+      payment.status === 'captured'
+    ) {
+      console.log(
+        '[Payment Verify] Payment already processed successfully:',
+        {
+          paymentId: payment.id,
+          status: payment.status,
+        }
+      );
+
+      return NextResponse.json({
+        success: true,
+        already_processed: true,
+        payment_id: payment.id,
+        message: 'Payment already verified successfully',
+      });
+    }
+
+    // ============================================================
+    // 5. VERIFY ORDER ID
+    // ============================================================
+
+    if (
+      payment.gateway_order_id &&
+      payment.gateway_order_id !== gatewayOrderId
+    ) {
+      console.error(
+        '[Payment Verify] Razorpay order mismatch:',
+        {
+          paymentId: payment.id,
+          storedOrderId: payment.gateway_order_id,
+          receivedOrderId: gatewayOrderId,
+        }
+      );
+
       return NextResponse.json(
-        { success: false, error: verifyResult.error, status: 'failed' },
+        {
+          success: false,
+          error: 'Razorpay order ID mismatch',
+        },
         { status: 400 }
       );
     }
 
-    // Update payment based on verification result
-    if (verifyResult.status === 'success') {
-      await PaymentService.processSuccessfulPayment(
-        payment_id,
-        gateway_payment_id,
-        payment.selected_gateway as any
+    // ============================================================
+    // 6. ENSURE RAZORPAY GATEWAY
+    // ============================================================
+
+    const gatewayCode =
+      payment.gateway ||
+      payment.selected_gateway ||
+      'razorpay';
+
+    if (gatewayCode !== 'razorpay') {
+      console.error(
+        '[Payment Verify] Unsupported gateway:',
+        {
+          paymentId: payment.id,
+          gatewayCode,
+        }
       );
-    } else if (verifyResult.status === 'failed') {
-      await PaymentService.processFailedPayment(payment_id, 'Payment verification returned failed status');
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Unsupported payment gateway: ${gatewayCode}`,
+        },
+        { status: 400 }
+      );
     }
+
+    // ============================================================
+    // 7. VERIFY PAYMENT WITH RAZORPAY
+    // ============================================================
+
+    const adapter = createGatewayAdapter('razorpay');
+
+    console.log('[Payment Verify] Verifying with Razorpay:', {
+      paymentId: payment.id,
+      gatewayPaymentId,
+      gatewayOrderId,
+    });
+
+    const verificationResult =
+      await adapter.verifyPayment({
+        gateway_payment_id: gatewayPaymentId,
+        gateway_order_id: gatewayOrderId,
+        signature,
+      });
+
+    console.log('[Payment Verify] Razorpay verification result:', {
+      success: verificationResult.success,
+      status: verificationResult.status,
+      gatewayPaymentId:
+        verificationResult.gateway_payment_id || null,
+      error: verificationResult.error || null,
+    });
+
+    // ============================================================
+    // 8. RAZORPAY VERIFICATION FAILED
+    // ============================================================
+
+    if (!verificationResult.success) {
+      console.error(
+        '[Payment Verify] Razorpay verification failed:',
+        {
+          paymentId: payment.id,
+          gatewayPaymentId,
+          gatewayOrderId,
+          error: verificationResult.error,
+        }
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            verificationResult.error ||
+            'Razorpay payment verification failed',
+        },
+        { status: 400 }
+      );
+    }
+
+    // ============================================================
+    // 9. PAYMENT NOT YET CAPTURED
+    // ============================================================
+
+    if (verificationResult.status !== 'success') {
+      console.warn(
+        '[Payment Verify] Payment is not captured yet:',
+        {
+          paymentId: payment.id,
+          status: verificationResult.status,
+        }
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          pending: true,
+          error:
+            verificationResult.status === 'pending'
+              ? 'Payment is still being processed'
+              : `Payment status: ${verificationResult.status}`,
+        },
+        { status: 409 }
+      );
+    }
+
+    // ============================================================
+    // 10. MARK INTERNAL PAYMENT SUCCESSFUL
+    // ============================================================
+
+    console.log(
+      '[Payment Verify] Razorpay payment captured. Updating internal payment:',
+      {
+        paymentId: payment.id,
+        gatewayPaymentId,
+      }
+    );
+
+    try {
+      await PaymentService.processSuccessfulPayment(
+        payment.id,
+        verificationResult.gateway_payment_id ||
+        gatewayPaymentId,
+        'razorpay'
+      );
+    } catch (processingError: any) {
+      console.error(
+        '[Payment Verify] Failed to process successful payment:',
+        {
+          paymentId: payment.id,
+          error:
+            processingError?.message ||
+            processingError,
+          stack: processingError?.stack,
+        }
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            'Payment was verified by Razorpay but internal payment processing failed',
+          details:
+            processingError?.message ||
+            'Unknown payment processing error',
+        },
+        { status: 500 }
+      );
+    }
+
+    // ============================================================
+    // 11. FINAL DATABASE CHECK
+    // ============================================================
+
+    const {
+      data: updatedPayment,
+      error: finalLookupError,
+    } = await supabase
+      .from('payments')
+      .select(
+        'id,status,gateway_payment_id,gateway_order_id,paid_at'
+      )
+      .eq('id', payment.id)
+      .maybeSingle();
+
+    if (finalLookupError) {
+      console.error(
+        '[Payment Verify] Final payment lookup failed:',
+        {
+          code: finalLookupError.code,
+          message: finalLookupError.message,
+          details: finalLookupError.details,
+          hint: finalLookupError.hint,
+        }
+      );
+    }
+
+    console.log('[Payment Verify] Payment verification completed:', {
+      paymentId: payment.id,
+      status: updatedPayment?.status || null,
+      gatewayPaymentId:
+        updatedPayment?.gateway_payment_id || null,
+      gatewayOrderId:
+        updatedPayment?.gateway_order_id || null,
+      paidAt: updatedPayment?.paid_at || null,
+    });
 
     return NextResponse.json({
       success: true,
-      status: verifyResult.status,
+      payment_id: payment.id,
+      gateway_payment_id:
+        verificationResult.gateway_payment_id ||
+        gatewayPaymentId,
+      gateway_order_id: gatewayOrderId,
+      status: 'success',
+      message: 'Payment verified successfully',
     });
   } catch (error: any) {
-    console.error('[POST /api/payments/verify] Error:', error);
+    console.error(
+      '[Payment Verify] Unexpected server error:',
+      {
+        message: error?.message || error,
+        stack: error?.stack,
+      }
+    );
+
     return NextResponse.json(
-      { success: false, error: error.message || 'Payment verification failed' },
+      {
+        success: false,
+        error:
+          error?.message ||
+          'Unexpected payment verification error',
+      },
       { status: 500 }
     );
   }
