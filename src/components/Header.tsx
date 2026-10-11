@@ -5,18 +5,25 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 
+function isActiveNavPath(pathname: string, href: string) {
+  return (
+    pathname === href ||
+    (href === "/events" && pathname.startsWith("/events")) ||
+    (href === "/travel-tourism" && (pathname.startsWith("/travel-tourism") || pathname.startsWith("/services/tourism"))) ||
+    (href === "/hotels" && pathname.startsWith("/hotels"))
+  );
+}
+
 function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
   const pathname = usePathname();
-  const active = pathname === href;
+  const active = isActiveNavPath(pathname, href);
   return (
     <Link
       href={href}
-      className={`relative font-semibold text-[15px] transition-colors duration-300 ${active ? "text-white" : "text-white/60 hover:text-white"
-        } group`}
+      className={`group relative whitespace-nowrap text-[13px] font-semibold transition-colors duration-300 ${active ? "text-orange-400" : "text-white/75 hover:text-white"}`}
     >
       {children}
-      <span className={`absolute -bottom-1.5 left-0 h-[2px] rounded-full bg-gradient-to-r from-violet-400 to-cyan-400 transition-all duration-300 ${active ? "w-full shadow-[0_0_8px_rgba(167,139,250,0.8)]" : "w-0 group-hover:w-full"
-        }`} />
+      <span className={`absolute -bottom-2 left-0 h-0.5 rounded-full bg-orange-400 transition-all duration-300 ${active ? "w-full" : "w-0 group-hover:w-full"}`} />
     </Link>
   );
 }
@@ -41,7 +48,7 @@ function AvatarDropdown({ user, role, onSignOut }: { user: any, role: string | n
     <div className="relative flex items-center" ref={dropRef}>
       <button
         onClick={() => setOpen(!open)}
-        className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 p-[2px] transition-all hover:scale-105 hover:shadow-[0_0_15px_rgba(139,92,246,0.3)] focus:outline-none"
+        className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 p-[2px] transition-all hover:scale-105 hover:shadow-md focus:outline-none bg-white/10"
       >
         {user?.profileImage ? (
           <img src={user.profileImage} alt="Profile" className="h-full w-full rounded-full object-cover shadow-inner" />
@@ -53,7 +60,7 @@ function AvatarDropdown({ user, role, onSignOut }: { user: any, role: string | n
       </button>
 
       <div
-        className={`absolute right-0 top-full mt-3 w-56 origin-top-right rounded-2xl border border-white/10 bg-[#0f0a1e]/95 p-2 shadow-2xl backdrop-blur-xl transition-all duration-300 ${open ? "scale-100 opacity-100" : "scale-95 opacity-0 pointer-events-none"
+        className={`absolute right-0 top-full mt-3 w-56 origin-top-right rounded-2xl border border-white/10 bg-[#1E293B] p-2 shadow-xl transition-all duration-300 ${open ? "scale-100 opacity-100" : "scale-95 opacity-0 pointer-events-none"
           }`}
       >
         <div className="px-3 py-2 border-b border-white/10 mb-2">
@@ -70,7 +77,7 @@ function AvatarDropdown({ user, role, onSignOut }: { user: any, role: string | n
         <Link href={role === "provider" ? "/provider/dashboard" : "/dashboard"} className="flex w-full items-center px-3 py-2.5 text-sm font-medium text-white/80 rounded-xl hover:bg-white/10 hover:text-white transition-colors" onClick={() => setOpen(false)}>
           Dashboard
         </Link>
-        <button onClick={() => { setOpen(false); onSignOut(); }} className="mt-1 flex w-full items-center px-3 py-2.5 text-sm font-medium text-red-400 rounded-xl hover:bg-red-400/10 transition-colors">
+        <button onClick={() => { setOpen(false); onSignOut(); }} className="mt-1 flex w-full items-center px-3 py-2.5 text-sm font-medium text-red-400 rounded-xl hover:bg-red-500/10 transition-colors">
           Logout
         </button>
       </div>
@@ -83,6 +90,7 @@ import { PageContainer } from "@/components/PageContainer";
 export function Header() {
   const { user, role, signOut } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const handleSignOut = () => {
@@ -93,7 +101,7 @@ export function Header() {
 
   // Close mobile menu on resize to desktop
   useEffect(() => {
-    const handleResize = () => { if (window.innerWidth >= 768) setMenuOpen(false); };
+    const handleResize = () => { if (window.innerWidth >= 1280) setMenuOpen(false); };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
@@ -109,52 +117,49 @@ export function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 w-full bg-[#05030f]/70 backdrop-blur-2xl border-b border-white/10 shadow-[0_4px_30px_rgba(0,0,0,0.1)] before:absolute before:inset-0 before:-z-10 before:bg-gradient-to-r before:from-violet-500/10 before:via-transparent before:to-cyan-500/10">
+      <header className="sticky top-0 z-[70] w-full bg-[#0F172A]/95 backdrop-blur-xl border-b border-white/10 shadow-sm">
         <PageContainer className="flex h-20 items-center justify-between">
           {/* Logo */}
           <Link href="/" className="group flex items-center gap-2" onClick={() => setMenuOpen(false)}>
             <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-cyan-500 shadow-[0_0_20px_rgba(139,92,246,0.4)] transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3">
               <span className="text-xl font-black text-white">E</span>
             </div>
-            <span className="text-2xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-white/70 transition-colors group-hover:from-violet-400 group-hover:to-cyan-400">
+            <span className="text-2xl font-black tracking-tight text-white transition-colors group-hover:text-violet-400">
               Evigo
             </span>
           </Link>
 
           {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-6 bg-white/[0.03] px-8 py-2.5 rounded-full border border-white/5 shadow-inner">
+          <nav className="hidden xl:flex items-center gap-4">
             <NavLink href="/">Home</NavLink>
             <NavLink href="/combo-packs">Combo Packs</NavLink>
-            <NavLink href="/events">Events</NavLink>
-            <NavLink href="/travel-tourism">Travel & Tourism</NavLink>
+            <NavLink href="/events">Events &amp; Services</NavLink>
+            <NavLink href="/travel-tourism">Travel &amp; Tourism</NavLink>
+            <NavLink href="/hotels">Hotels &amp; Venues</NavLink>
             <NavLink href="/about">About</NavLink>
             <NavLink href="/contact">Contact</NavLink>
           </nav>
 
           {/* Desktop CTAs */}
-          <div className="hidden md:flex items-center gap-5">
+          <div className="hidden xl:flex items-center gap-3">
+            <Link href="/explore" aria-label="Search services" className="rounded-lg p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </Link>
             {!user ? (
               <>
-                <Link href="/login/client" className="text-[14px] font-semibold text-white/70 hover:text-white transition-colors relative after:absolute after:-bottom-1 after:left-0 after:h-[2px] after:w-0 after:bg-white after:transition-all hover:after:w-full">
+                <Link href="/login" className="inline-flex items-center justify-center px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white font-bold rounded-lg transition-colors border border-white/20">
                   Login
                 </Link>
-                <div className="h-5 w-px bg-white/10" />
-                <Link href="/partner" className="group relative inline-flex items-center justify-center overflow-hidden rounded-full bg-gradient-to-r from-violet-600 to-cyan-500 px-5 py-2.5 text-sm font-bold text-white shadow-[0_0_15px_rgba(139,92,246,0.3)] transition-all hover:scale-105 hover:shadow-[0_0_25px_rgba(56,189,248,0.5)]">
-                  Become a Partner
-                </Link>
-                <Link href="/explore" className="group relative inline-flex items-center justify-center overflow-hidden rounded-full bg-white text-[#05030f] px-6 py-2.5 font-bold shadow-[0_0_20px_rgba(255,255,255,0.3)] transition-all hover:scale-105 hover:shadow-[0_0_30px_rgba(255,255,255,0.5)]">
-                  <span className="relative flex items-center gap-2">
-                    Book Service
-                    <svg className="h-4 w-4 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                    </svg>
-                  </span>
+                <Link href="/explore" className="inline-flex items-center justify-center px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-lg transition-colors shadow-sm">
+                  Book a Service
                 </Link>
               </>
             ) : (
               <div className="flex items-center gap-4">
-                <Link href="/explore" className="hidden lg:flex group relative inline-flex items-center justify-center overflow-hidden rounded-full bg-white text-[#05030f] px-5 py-2.5 text-sm font-bold shadow-[0_0_15px_rgba(255,255,255,0.3)] transition-all hover:scale-105 hover:shadow-[0_0_25px_rgba(255,255,255,0.5)]">
-                  Book Service
+                <Link href="/explore" className="inline-flex items-center justify-center px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-lg transition-colors shadow-sm">
+                  Book a Service
                 </Link>
                 <AvatarDropdown user={user} role={role} onSignOut={handleSignOut} />
               </div>
@@ -163,9 +168,11 @@ export function Header() {
 
           {/* Mobile hamburger button */}
           <button
-            className="md:hidden relative z-[60] flex h-10 w-10 flex-col items-center justify-center gap-1.5 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md transition-colors hover:bg-white/10"
+            className="relative z-[60] flex h-10 w-10 flex-col items-center justify-center gap-1.5 rounded-xl border border-white/20 bg-white/10 transition-colors hover:bg-white/20 xl:hidden"
             onClick={() => setMenuOpen(!menuOpen)}
             aria-label="Toggle menu"
+            aria-expanded={menuOpen}
+            aria-controls="mobile-navigation"
           >
             <span className={`block h-0.5 w-5 rounded-full bg-white transition-transform duration-300 ${menuOpen ? 'translate-y-2 rotate-45' : ''}`} />
             <span className={`block h-0.5 w-5 rounded-full bg-white transition-opacity duration-300 ${menuOpen ? 'opacity-0' : 'opacity-100'}`} />
@@ -176,24 +183,25 @@ export function Header() {
 
       {/* Mobile Menu Overlay */}
       <div
-        className={`fixed inset-0 z-[55] bg-[#05030f]/80 backdrop-blur-xl transition-opacity duration-300 md:hidden ${menuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+        className={`fixed inset-0 z-[55] bg-black/50 backdrop-blur-xl transition-opacity duration-300 xl:hidden ${menuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
           }`}
         onClick={() => setMenuOpen(false)}
       />
 
       {/* Mobile Menu Slide-in Panel */}
       <div
-        className={`fixed top-0 right-0 z-[56] h-full w-[300px] bg-[#0a0616] border-l border-white/10 shadow-[-10px_0_30px_rgba(0,0,0,0.5)] transition-transform duration-300 ease-out md:hidden flex flex-col ${menuOpen ? 'translate-x-0' : 'translate-x-full'
+        id="mobile-navigation"
+        className={`fixed top-0 right-0 z-[56] h-full w-[min(340px,88vw)] bg-[#0F172A] border-l border-white/10 shadow-[-10px_0_30px_rgba(0,0,0,0.5)] transition-transform duration-300 ease-out xl:hidden flex flex-col ${menuOpen ? 'translate-x-0' : 'translate-x-full'
           }`}
       >
         <div className="flex flex-col flex-1 px-6 pt-24 pb-8 overflow-y-auto">
           {user && (
-            <div className="mb-8 flex items-center gap-4 rounded-2xl bg-gradient-to-br from-white/[0.05] to-transparent p-4 border border-white/10 relative overflow-hidden">
+            <div className="mb-8 flex items-center gap-4 rounded-2xl bg-white/5 p-4 border border-white/10 relative overflow-hidden">
               <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-violet-500 to-cyan-500" />
               {user.profileImage ? (
-                <img src={user.profileImage} alt="Profile" className="h-12 w-12 rounded-full object-cover shadow-inner ring-2 ring-white/10" />
+                <img src={user.profileImage} alt="Profile" className="h-12 w-12 rounded-full object-cover shadow-inner ring-2 ring-white/20" />
               ) : (
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 text-lg font-bold text-white shadow-inner ring-2 ring-white/10">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-cyan-500 text-lg font-bold text-white shadow-inner ring-2 ring-white/20">
                   {user.email ? user.email.charAt(0).toUpperCase() : "U"}
                 </div>
               )}
@@ -205,56 +213,66 @@ export function Header() {
           )}
 
           <nav className="flex flex-col gap-2">
-            <Link href="/" className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/5 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>
-              Home
-              <svg className="h-5 w-5 text-white/20 transition-transform group-hover:translate-x-1 group-hover:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+            <Link href="/explore" aria-label="Search services" className="group flex items-center justify-between border-b border-white/10 py-4 text-lg font-bold text-cyan-300 transition-colors hover:text-white" onClick={() => setMenuOpen(false)}>
+              Search services
+              <svg className="h-5 w-5 text-cyan-300/70 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="m21 21-4.35-4.35m1.35-5.15a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z" />
+              </svg>
             </Link>
-            <Link href="/combo-packs" className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/5 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>
+            <Link href="/" className={`group flex items-center justify-between py-4 text-lg font-bold transition-colors border-b border-white/10 hover:text-white ${isActiveNavPath(pathname, "/") ? "text-orange-400" : "text-white/80"}`} onClick={() => setMenuOpen(false)}>
+              Home
+              <svg className="h-5 w-5 text-white/30 transition-transform group-hover:translate-x-1 group-hover:text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+            </Link>
+            <Link href="/combo-packs" className={`group flex items-center justify-between py-4 text-lg font-bold transition-colors border-b border-white/10 hover:text-white ${isActiveNavPath(pathname, "/combo-packs") ? "text-orange-400" : "text-white/80"}`} onClick={() => setMenuOpen(false)}>
               <span className="flex items-center gap-2">
                 <span>🎁</span>
                 <span>Combo Packs</span>
               </span>
-              <svg className="h-5 w-5 text-white/20 transition-transform group-hover:translate-x-1 group-hover:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+              <svg className="h-5 w-5 text-white/30 transition-transform group-hover:translate-x-1 group-hover:text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </Link>
-            <Link href="/events" className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/5 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>
-              Events
-              <svg className="h-5 w-5 text-white/20 transition-transform group-hover:translate-x-1 group-hover:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+            <Link href="/events" className={`group flex items-center justify-between py-4 text-lg font-bold transition-colors border-b border-white/10 hover:text-white ${isActiveNavPath(pathname, "/events") ? "text-orange-400" : "text-white/80"}`} onClick={() => setMenuOpen(false)}>
+              Events &amp; Services
+              <svg className="h-5 w-5 text-white/30 transition-transform group-hover:translate-x-1 group-hover:text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </Link>
-            <Link href="/travel-tourism" className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/5 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>
+            <Link href="/travel-tourism" className={`group flex items-center justify-between py-4 text-lg font-bold transition-colors border-b border-white/10 hover:text-orange-400 ${isActiveNavPath(pathname, "/travel-tourism") ? "text-orange-400" : "text-white/80"}`} onClick={() => setMenuOpen(false)}>
               Travel & Tourism
-              <svg className="h-5 w-5 text-white/20 transition-transform group-hover:translate-x-1 group-hover:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+              <svg className="h-5 w-5 text-white/30 transition-transform group-hover:translate-x-1 group-hover:text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </Link>
-            <Link href="/about" className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/5 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>
+            <Link href="/hotels" className={`group flex items-center justify-between py-4 text-lg font-bold transition-colors border-b border-white/10 hover:text-white ${isActiveNavPath(pathname, "/hotels") ? "text-orange-400" : "text-white/80"}`} onClick={() => setMenuOpen(false)}>
+              Hotels &amp; Venues
+              <svg className="h-5 w-5 text-white/30 transition-transform group-hover:translate-x-1 group-hover:text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+            </Link>
+            <Link href="/about" className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/10 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>
               About
-              <svg className="h-5 w-5 text-white/20 transition-transform group-hover:translate-x-1 group-hover:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+              <svg className="h-5 w-5 text-white/30 transition-transform group-hover:translate-x-1 group-hover:text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </Link>
-            <Link href="/contact" className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/5 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>
+            <Link href="/contact" className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/10 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>
               Contact
-              <svg className="h-5 w-5 text-white/20 transition-transform group-hover:translate-x-1 group-hover:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+              <svg className="h-5 w-5 text-white/30 transition-transform group-hover:translate-x-1 group-hover:text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </Link>
 
             {user && (
               <>
-                <Link href="#" className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/5 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>
+                <Link href="#" className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/10 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>
                   My Profile
-                  <svg className="h-5 w-5 text-white/20 transition-transform group-hover:translate-x-1 group-hover:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                  <svg className="h-5 w-5 text-white/30 transition-transform group-hover:translate-x-1 group-hover:text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                 </Link>
-                <Link href={role === "provider" ? "/provider/dashboard" : "/dashboard"} className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/5 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>
+                <Link href={role === "provider" ? "/provider/dashboard" : "/dashboard"} className="group flex items-center justify-between text-lg font-bold text-white/80 py-4 border-b border-white/10 hover:text-white transition-colors" onClick={() => setMenuOpen(false)}>
                   Dashboard
-                  <svg className="h-5 w-5 text-white/20 transition-transform group-hover:translate-x-1 group-hover:text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                  <svg className="h-5 w-5 text-white/30 transition-transform group-hover:translate-x-1 group-hover:text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                 </Link>
               </>
             )}
           </nav>
 
           <div className="mt-auto pt-8 flex flex-col gap-4">
-            <Link href="/explore" className="flex w-full items-center justify-center rounded-xl bg-white px-6 py-4 text-base font-bold text-[#05030f] transition-colors hover:bg-zinc-100" onClick={() => setMenuOpen(false)}>
+            <Link href="/explore" className="flex w-full items-center justify-center rounded-xl bg-orange-500 px-6 py-4 text-base font-bold text-white transition-colors hover:bg-orange-600" onClick={() => setMenuOpen(false)}>
               Book Service
             </Link>
             {!user ? (
               <>
-                <Link href="/login/client" className="flex w-full items-center justify-center rounded-xl bg-white/5 border border-white/10 px-6 py-4 text-base font-bold text-white transition-colors hover:bg-white/10" onClick={() => setMenuOpen(false)}>
-                  Client Login
+                <Link href="/login" className="flex w-full items-center justify-center rounded-xl bg-white/10 border border-white/20 px-6 py-4 text-base font-bold text-white transition-colors hover:bg-white/20" onClick={() => setMenuOpen(false)}>
+                  Login
                 </Link>
                 <Link href="/partner" className="group relative flex w-full items-center justify-center overflow-hidden rounded-xl bg-gradient-to-r from-violet-600 to-cyan-500 px-6 py-4 text-base font-bold text-white shadow-[0_4px_20px_rgba(139,92,246,0.3)] transition-all hover:shadow-[0_4px_30px_rgba(56,189,248,0.5)]" onClick={() => setMenuOpen(false)}>
                   <span className="absolute inset-0 bg-white/20 translate-y-full transition-transform group-hover:translate-y-0" />
@@ -262,7 +280,7 @@ export function Header() {
                 </Link>
               </>
             ) : (
-              <button onClick={handleSignOut} className="flex w-full items-center justify-center rounded-xl bg-red-500/10 border border-red-500/20 px-6 py-4 text-base font-bold text-red-400 transition-colors hover:bg-red-500/20 hover:text-red-300">
+              <button onClick={handleSignOut} className="flex w-full items-center justify-center rounded-xl bg-red-500/10 border border-red-500/20 px-6 py-4 text-base font-bold text-red-400 transition-colors hover:bg-red-500/20">
                 Sign Out
               </button>
             )}

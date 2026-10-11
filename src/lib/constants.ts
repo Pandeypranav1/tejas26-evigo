@@ -495,26 +495,489 @@ export interface TourismPlace {
   featured?: boolean;
 }
 
-export const TOURISM_DISTRICTS = [
-  { id: "Jamui", name: "Jamui", available: true, count: 8, tagline: "Hills, Jain Pilgrimage & Ancient Heritage" },
-  { id: "Patna", name: "Patna", available: false, count: 0, tagline: "Ancient Pataliputra & Ganges Ghats" },
-  { id: "Gaya", name: "Gaya & Bodh Gaya", available: false, count: 0, tagline: "Mahabodhi Temple & Spiritual Trails" },
-  { id: "Rajgir", name: "Nalanda & Rajgir", available: false, count: 0, tagline: "Ancient University & Hot Springs" },
-  { id: "Vaishali", name: "Vaishali", available: false, count: 0, tagline: "Ashokan Pillar & Buddhist Stupa" },
-  { id: "Bhagalpur", name: "Bhagalpur", available: false, count: 0, tagline: "Silk City & Dolphin Sanctuary" },
-  { id: "Munger", name: "Munger", available: false, count: 0, tagline: "Historic Fort & Yoga Capital" },
-  { id: "Darbhanga", name: "Darbhanga", available: false, count: 0, tagline: "Royal Palaces & Mithila Culture" },
+export interface TourismImageAttribution {
+  name: string;
+  source: string;
+  license: string;
+  licenseUrl: string;
+}
+
+export interface TourismDistrict {
+  id: string;
+  name: string;
+  available: boolean;
+  count: number;
+  tagline: string;
+  description: string;
+  heroImage: string;
+  heroImageAlt: string;
+  bestTimeToVisit?: string;
+  imageAttribution?: TourismImageAttribution;
+}
+
+export const TOURISM_DESTINATION_IMAGES: Record<
+  string,
+  {
+    src: string;
+    alt: string;
+    objectPosition?: string;
+    imageAttribution?: TourismImageAttribution;
+  }
+> = {
+  Jamui: {
+    src: "/tourism/jamui/giddheshwar_actual.jpg",
+    alt: "Giddheshwar Temple and surrounding landscape in Jamui, Bihar",
+  },
+  Patna: {
+    src: "https://upload.wikimedia.org/wikipedia/commons/d/db/The_Evening_View_from_Ghandhi_Ghat_Patna_01.jpg",
+    alt: "Evening view of Gandhi Ghat on the Ganga in Patna, Bihar",
+    objectPosition: "center 58%",
+    imageAttribution: {
+      name: "AnkitAnand073",
+      source: "https://commons.wikimedia.org/wiki/File:The_Evening_View_from_Ghandhi_Ghat_Patna_01.jpg",
+      license: "CC BY-SA 4.0",
+      licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/",
+    },
+  },
+  Gaya: {
+    src: "/tourism/bodh_gaya_mahabodhi.jpg",
+    alt: "Stone Buddha reliefs on the south wall of Mahabodhi Temple, Bodh Gaya, Bihar",
+    imageAttribution: {
+      name: "Sumitsurai",
+      source: "https://commons.wikimedia.org/wiki/File:Mahabodhi_Temple_South_Wall_(2).jpg",
+      license: "CC BY-SA 4.0",
+      licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/",
+    },
+  },
+  Rajgir: {
+    src: "/tourism/rajgir_shanti_stupa.jpg",
+    alt: "Vishwa Shanti Stupa at Rajgir, Bihar",
+    imageAttribution: {
+      name: "Photo Dharma",
+      source: "https://commons.wikimedia.org/wiki/File:Shanti_Stupa_at_Rajgir.jpg",
+      license: "CC BY 2.0",
+      licenseUrl: "https://creativecommons.org/licenses/by/2.0/",
+    },
+  },
+  Nalanda: {
+    src: "/tourism/nalanda_mahavihara.jpg",
+    alt: "Brick monastery ruins at Nalanda Mahavihara, Bihar",
+    imageAttribution: {
+      name: "Sumitsurai",
+      source: "https://commons.wikimedia.org/wiki/File:Monastery_5_-_Nalanda_Mahavihara_(1).jpg",
+      license: "CC BY-SA 4.0",
+      licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/",
+    },
+  },
+  Sitamarhi: {
+    src: "/tourism/sitamarhi_punaura_dham.jpg",
+    alt: "Punaura Dham temple in Sitamarhi, Bihar",
+    imageAttribution: {
+      name: "Skrsingh009",
+      source: "https://commons.wikimedia.org/wiki/File:Punaura_Dham.jpg",
+      license: "CC0",
+      licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/",
+    },
+  },
+  Vaishali: {
+    src: "https://upload.wikimedia.org/wikipedia/commons/f/fc/Ashokan_Pillar_and_Buddhist_Stupa_at_Vaishali%2C_Bihar_%28350840154%29.jpg",
+    alt: "Ashokan Pillar and Buddhist stupa at Vaishali, Bihar",
+    imageAttribution: {
+      name: "Chandan Singh",
+      source: "https://commons.wikimedia.org/wiki/File:Ashokan_Pillar_and_Buddhist_Stupa_at_Vaishali,_Bihar_(350840154).jpg",
+      license: "CC BY 2.0",
+      licenseUrl: "https://creativecommons.org/licenses/by/2.0/",
+    },
+  },
+  Madhubani: {
+    src: "/tourism/madhubani_art.jpg",
+    alt: "Mithila paintings displayed at a Madhubani art market in Bihar",
+  },
+};
+
+export const TOURISM_DISTRICTS: TourismDistrict[] = [
+  {
+    id: "Jamui",
+    name: "Jamui",
+    available: true,
+    count: 8,
+    tagline: "Hills, Jain Pilgrimage & Ancient Heritage",
+    description: "Explore Jain pilgrimage, heritage and nature across Jamui.",
+    heroImage: TOURISM_DESTINATION_IMAGES.Jamui.src,
+    heroImageAlt: TOURISM_DESTINATION_IMAGES.Jamui.alt,
+    bestTimeToVisit: "Oct - Mar",
+  },
+  {
+    id: "Patna",
+    name: "Patna",
+    available: true,
+    count: 1,
+    tagline: "Ancient Pataliputra & Ganges Ghats",
+    description: "Discover the Ganga riverfront, historic landmarks and urban heritage.",
+    heroImage: TOURISM_DESTINATION_IMAGES.Patna.src,
+    heroImageAlt: TOURISM_DESTINATION_IMAGES.Patna.alt,
+    imageAttribution: TOURISM_DESTINATION_IMAGES.Patna.imageAttribution,
+  },
+  {
+    id: "Gaya",
+    name: "Gaya & Bodh Gaya",
+    available: true,
+    count: 1,
+    tagline: "Mahabodhi Temple & Spiritual Trails",
+    description: "Explore Buddhist heritage and pilgrimage architecture at Bodh Gaya.",
+    heroImage: TOURISM_DESTINATION_IMAGES.Gaya.src,
+    heroImageAlt: TOURISM_DESTINATION_IMAGES.Gaya.alt,
+    imageAttribution: TOURISM_DESTINATION_IMAGES.Gaya.imageAttribution,
+  },
+  {
+    id: "Rajgir",
+    name: "Nalanda & Rajgir",
+    available: true,
+    count: 2,
+    tagline: "Ancient University & Hot Springs",
+    description: "Discover Nalanda heritage, Rajgir hills and the Shanti Stupa.",
+    heroImage: TOURISM_DESTINATION_IMAGES.Rajgir.src,
+    heroImageAlt: TOURISM_DESTINATION_IMAGES.Rajgir.alt,
+    imageAttribution: TOURISM_DESTINATION_IMAGES.Rajgir.imageAttribution,
+  },
+  {
+    id: "Nalanda",
+    name: "Nalanda",
+    available: true,
+    count: 1,
+    tagline: "Ancient University & Buddhist Heritage",
+    description: "Explore the UNESCO-listed Nalanda Mahavihara and its ancient university ruins.",
+    heroImage: TOURISM_DESTINATION_IMAGES.Nalanda.src,
+    heroImageAlt: TOURISM_DESTINATION_IMAGES.Nalanda.alt,
+    imageAttribution: TOURISM_DESTINATION_IMAGES.Nalanda.imageAttribution,
+  },
+  {
+    id: "Sitamarhi",
+    name: "Sitamarhi",
+    available: true,
+    count: 1,
+    tagline: "Punaura Dham & Mithila Heritage",
+    description: "Visit Punaura Dham, a religious destination in Sitamarhi district.",
+    heroImage: TOURISM_DESTINATION_IMAGES.Sitamarhi.src,
+    heroImageAlt: TOURISM_DESTINATION_IMAGES.Sitamarhi.alt,
+    imageAttribution: TOURISM_DESTINATION_IMAGES.Sitamarhi.imageAttribution,
+  },
+  {
+    id: "Vaishali",
+    name: "Vaishali",
+    available: true,
+    count: 1,
+    tagline: "Buddhist Heritage & Republic",
+    description: "Explore the ancient republic where Buddha delivered his last sermon.",
+    heroImage: TOURISM_DESTINATION_IMAGES.Vaishali.src,
+    heroImageAlt: TOURISM_DESTINATION_IMAGES.Vaishali.alt,
+    imageAttribution: TOURISM_DESTINATION_IMAGES.Vaishali.imageAttribution,
+  },
+  {
+    id: "Madhubani",
+    name: "Madhubani",
+    available: true,
+    count: 1,
+    tagline: "Mithila Art & Culture",
+    description: "Discover the vibrant Madhubani paintings and Mithila culture.",
+    heroImage: TOURISM_DESTINATION_IMAGES.Madhubani.src,
+    heroImageAlt: TOURISM_DESTINATION_IMAGES.Madhubani.alt,
+  },
+];
+
+export interface BiharDestination {
+  name: string;
+  tag: string;
+  img: string;
+  alt: string;
+  district: string;
+  objectPosition?: string;
+  imageAttribution?: TourismImageAttribution;
+}
+
+export const BIHAR_DESTINATIONS: BiharDestination[] = [
+  {
+    name: "Patna",
+    tag: "Ganges Ghats & Cultural Landmarks",
+    img: TOURISM_DESTINATION_IMAGES.Patna.src,
+    alt: TOURISM_DESTINATION_IMAGES.Patna.alt,
+    district: "Patna",
+    objectPosition: TOURISM_DESTINATION_IMAGES.Patna.objectPosition,
+    imageAttribution: TOURISM_DESTINATION_IMAGES.Patna.imageAttribution,
+  },
+  {
+    name: "Jamui",
+    tag: "Jain Pilgrimage, Heritage & Nature",
+    img: TOURISM_DESTINATION_IMAGES.Jamui.src,
+    alt: TOURISM_DESTINATION_IMAGES.Jamui.alt,
+    district: "Jamui",
+  },
+  {
+    name: "Gaya",
+    tag: "Bodh Gaya & Buddhist Heritage",
+    img: TOURISM_DESTINATION_IMAGES.Gaya.src,
+    alt: TOURISM_DESTINATION_IMAGES.Gaya.alt,
+    district: "Gaya",
+  },
+  {
+    name: "Rajgir",
+    tag: "Hills, Ropeway & Heritage",
+    img: TOURISM_DESTINATION_IMAGES.Rajgir.src,
+    alt: TOURISM_DESTINATION_IMAGES.Rajgir.alt,
+    district: "Rajgir",
+    objectPosition: TOURISM_DESTINATION_IMAGES.Rajgir.objectPosition,
+    imageAttribution: TOURISM_DESTINATION_IMAGES.Rajgir.imageAttribution,
+  },
+  {
+    name: "Nalanda",
+    tag: "Ancient University",
+    img: TOURISM_DESTINATION_IMAGES.Nalanda.src,
+    alt: TOURISM_DESTINATION_IMAGES.Nalanda.alt,
+    district: "Nalanda",
+    imageAttribution: TOURISM_DESTINATION_IMAGES.Nalanda.imageAttribution,
+  },
+  {
+    name: "Sitamarhi",
+    tag: "Punaura Dham & Mithila Heritage",
+    img: TOURISM_DESTINATION_IMAGES.Sitamarhi.src,
+    alt: TOURISM_DESTINATION_IMAGES.Sitamarhi.alt,
+    district: "Sitamarhi",
+    imageAttribution: TOURISM_DESTINATION_IMAGES.Sitamarhi.imageAttribution,
+  },
+  {
+    name: "Vaishali",
+    tag: "Buddhist Heritage",
+    img: TOURISM_DESTINATION_IMAGES.Vaishali.src,
+    alt: TOURISM_DESTINATION_IMAGES.Vaishali.alt,
+    district: "Vaishali",
+    imageAttribution: TOURISM_DESTINATION_IMAGES.Vaishali.imageAttribution,
+  },
+  {
+    name: "Madhubani",
+    tag: "Mithila Art & Culture",
+    img: TOURISM_DESTINATION_IMAGES.Madhubani.src,
+    alt: TOURISM_DESTINATION_IMAGES.Madhubani.alt,
+    district: "Madhubani",
+  },
+];
+
+export const HERO_SLIDER_IMAGES: {
+  src: string;
+  alt: string;
+  title: string;
+  subtitle: string;
+  imageAttribution?: TourismImageAttribution;
+}[] = [
+  {
+    src: "/tourism/patna_ganga_ghat.jpg",
+    alt: "Ganga riverfront in Patna, Bihar",
+    title: "Patna Ganga Riverfront",
+    subtitle: "Riverfront views along the Ganga",
+  },
+  {
+    src: "/tourism/jamui/simultala.png",
+    alt: "Simultala hills in Jamui, Bihar",
+    title: "Simultala Hills",
+    subtitle: "A quiet nature escape in Jamui",
+  },
 ] as const;
 
-export const BIHAR_DESTINATIONS = [
-  { name: "Patna", tag: "Ganges Ghats", img: "/patna_ganges.png", district: "Patna" },
-  { name: "Gaya", tag: "Buddhist Circuit", img: "/gaya_buddhist.png", district: "Gaya" },
-  { name: "Rajgir", tag: "Hot Springs & Hills", img: "/rajgir_hills.png", district: "Rajgir" },
-  { name: "Vaishali", tag: "Ancient Ruins", img: "/vaishali_ruins.png", district: "Vaishali" },
-  { name: "Jamui", tag: "Wildlife & Nature", img: "/jamui_nature.png", district: "Jamui" },
+export const CURATED_EXPERIENCES: {
+  id: string;
+  title: string;
+  description: string;
+  image: string;
+  imageAlt: string;
+  link: string;
+  imageAttribution?: TourismImageAttribution;
+}[] = [
+  {
+    id: "spiritual",
+    title: "Spiritual Circuit",
+    description: "Visit sacred sites and experience Bihar's spiritual heritage",
+    image: "/tourism/nunthardham_shiva.jpg",
+    imageAlt: "Shiva shrine at Nunthardham, Jamui, Bihar",
+    link: "/services/tourism?category=religious"
+  },
+  {
+    id: "heritage",
+    title: "Heritage Trail",
+    description: "Walk through ancient ruins and historical landmarks",
+    image: "/tourism/munger_fort.jpg",
+    imageAlt: "Historic Munger Fort beside the Ganga in Bihar",
+    imageAttribution: {
+      name: "Rkrjmp",
+      source: "https://commons.wikimedia.org/wiki/File:Munger_Fort,_Bihar.jpg",
+      license: "CC BY-SA 4.0",
+      licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/",
+    },
+    link: "/services/tourism?category=historical"
+  },
+  {
+    id: "nature",
+    title: "Nature & Adventure",
+    description: "Explore hills, forests, rivers and adventure activities",
+    image: "/tourism/jamui/simultala.png",
+    imageAlt: "Green hills around Simultala in Jamui, Bihar",
+    link: "/services/tourism?category=nature"
+  },
+  {
+    id: "food",
+    title: "Food & Culture",
+    description: "Taste local flavors and experience Mithila's vibrant culture",
+    image: "/mithila_cultural_1777314631804.png",
+    imageAlt: "Mithila cultural art and traditions from Bihar",
+    link: "/services/tourism"
+  }
 ] as const;
 
 export const TOURISM_PLACES: TourismPlace[] = [
+  {
+    id: "mahabodhi-temple",
+    name: "Mahabodhi Temple",
+    district: "Gaya",
+    category: "Religious / Buddhist temple",
+    description: "UNESCO World Heritage Site and the place where Buddha attained enlightenment.",
+    overview: "The Mahabodhi Temple complex in Bodh Gaya is the most sacred site in Buddhism.",
+    historicalBackground: "The original temple was built by Emperor Ashoka in the 3rd century BCE. The current structure dates to the 5th-6th century CE during the Gupta period.",
+    significance: "The holiest site in Buddhism, marking the location where Siddhartha Gautama attained enlightenment.",
+    location: "Bodh Gaya, Gaya district, Bihar",
+    howToReach: "Well connected by road, rail, and air. Gaya has its own airport with connections to major Indian cities.",
+    timings: "5:00 AM - 9:00 PM (open throughout the year)",
+    entryFee: "Free for all",
+    historySources: [
+      { label: "UNESCO World Heritage Centre", url: "https://whc.unesco.org/en/list/1056" },
+      { label: "Bihar Tourism", url: "https://tourism.bihar.gov.in/en/destinations/gaya/bodh-gaya" },
+    ],
+    image: TOURISM_DESTINATION_IMAGES.Gaya.src,
+    lat: 24.6954,
+    lng: 84.991358,
+    featured: true,
+  },
+  {
+    id: "vishwa-shanti-stupa",
+    name: "Vishwa Shanti Stupa",
+    district: "Rajgir",
+    category: "Religious / Buddhist temple",
+    description: "Peace Pagoda built on the Ratnagiri hill in Rajgir.",
+    overview: "A beautiful white stupa built by Japanese Buddhists to promote world peace.",
+    historicalBackground: "Built in 1969 and inaugurated in 1970 by the Japanese Buddhist monk Nichidatsu Fujii.",
+    significance: "One of the Peace Pagodas built around the world to promote world peace and non-violence.",
+    location: "Ratnagiri Hill, Rajgir, Nalanda district, Bihar",
+    howToReach: "Can be reached by ropeway from Rajgir or by road trekking.",
+    timings: "6:00 AM - 6:00 PM",
+    entryFee: "Free",
+    historySources: [
+      { label: "Bihar Tourism", url: "https://tourism.bihar.gov.in/en/destinations/rajgir" },
+    ],
+    image: TOURISM_DESTINATION_IMAGES.Rajgir.src,
+    lat: 25.0044,
+    lng: 85.4427,
+    featured: true,
+  },
+  {
+    id: "nalanda-ruins",
+    name: "Nalanda Mahavihara Ruins",
+    district: "Nalanda",
+    category: "Historical / Monument",
+    description: "Ancient Buddhist university that was a center of learning from 5th to 12th century CE.",
+    overview: "The most famous and prestigious university of ancient India.",
+    historicalBackground: "Founded in 427 CE during the Gupta dynasty, it attracted scholars from all over Asia including Hiuen Tsang.",
+    significance: "UNESCO World Heritage Site representing the pinnacle of ancient Indian education.",
+    location: "Nalanda, near Rajgir, Bihar",
+    howToReach: "Well connected by road from Patna and Rajgir",
+    timings: "9:00 AM - 5:00 PM (closed on Mondays)",
+    entryFee: "₹15 for Indians, ₹200 for foreigners",
+    historySources: [
+      { label: "UNESCO World Heritage Centre", url: "https://whc.unesco.org/en/list/1502" },
+      { label: "Bihar Tourism", url: "https://tourism.bihar.gov.in/en/destinations/nalanda" },
+    ],
+    image: TOURISM_DESTINATION_IMAGES.Nalanda.src,
+    lat: 25.1358,
+    lng: 85.4758,
+    featured: true,
+  },
+  {
+    id: "ashokan-pillar-vaishali",
+    name: "Ashokan Pillar",
+    district: "Vaishali",
+    category: "Historical / Monument",
+    description: "Ancient pillar erected by Emperor Ashoka at Kolhua to mark Buddha's last sermon.",
+    overview: "One of the most important archaeological sites in Bihar associated with Buddhism.",
+    historicalBackground: "Erected in the 3rd century BCE by Emperor Ashoka to commemorate the last sermon of Buddha.",
+    significance: "Marks the site where Buddha delivered his last sermon before attaining Mahaparinirvana.",
+    location: "Kolhua, Vaishali district, Bihar",
+    howToReach: "About 55 km from Patna, accessible by road.",
+    timings: "6:00 AM - 6:00 PM",
+    entryFee: "Free",
+    historySources: [
+      { label: "Bihar Tourism", url: "https://tourism.bihar.gov.in/en/destinations/vaishali" },
+    ],
+    image: TOURISM_DESTINATION_IMAGES.Vaishali.src,
+    lat: 25.9890,
+    lng: 85.3490,
+    featured: true,
+  },
+  {
+    id: "madhubani-art-village",
+    name: "Madhubani Art Village",
+    district: "Madhubani",
+    category: "Cultural / Art",
+    description: "Traditional Mithila painting village showcasing the ancient art form of Bihar.",
+    overview: "Experience the vibrant and intricate Madhubani paintings passed down through generations.",
+    historicalBackground: "Madhubani painting originated in the Mithila region of Bihar, dating back to the Ramayana period.",
+    significance: "UNESCO Intangible Cultural Heritage representing the rich cultural heritage of Mithila.",
+    location: "Madhubani district, Bihar",
+    howToReach: "About 140 km from Patna, accessible by road and rail.",
+    timings: "10:00 AM - 6:00 PM",
+    entryFee: "Free to visit, workshops may charge a fee",
+    historySources: [
+      { label: "UNESCO Intangible Cultural Heritage", url: "https://ich.unesco.org/en/RL/mithila-painting-01052" },
+      { label: "Bihar Tourism", url: "https://tourism.bihar.gov.in/en/destinations/madhubani" },
+    ],
+    image: "/tourism/madhubani_art.jpg",
+    lat: 26.3718,
+    lng: 86.0831,
+    featured: true,
+  },
+  {
+    id: "gandhi-ghat-patna",
+    name: "Gandhi Ghat",
+    district: "Patna",
+    category: "Historical / Heritage",
+    description: "Historic ghat on the banks of the Ganges river in Patna.",
+    overview: "Named after Mahatma Gandhi, this ghat is famous for its evening aarti and spiritual atmosphere.",
+    historicalBackground: "The ghat was where Gandhi's ashes were immersed in the Ganges.",
+    significance: "Important pilgrimage site and a place of historical significance for India's independence movement.",
+    location: "Patna, Bihar",
+    howToReach: "Central location in Patna, easily accessible by auto-rickshaw and taxi.",
+    timings: "Open 24 hours",
+    entryFee: "Free",
+    historySources: [
+      { label: "Bihar Tourism", url: "https://tourism.bihar.gov.in/en/destinations/patna" },
+    ],
+    image: TOURISM_DESTINATION_IMAGES.Patna.src,
+    lat: 25.6100,
+    lng: 85.1500,
+    featured: true,
+  },
+  {
+    id: "punaura-dham",
+    name: "Punaura Dham",
+    district: "Sitamarhi",
+    category: "Religious / Temple",
+    description: "A religious destination listed by the Sitamarhi District Administration and associated in local tradition with Sita.",
+    overview: "Punaura Dham is a pilgrimage destination in Sitamarhi district.",
+    historicalBackground: "The Sitamarhi District Administration lists Punaura Dham as a tourist place. Its association with Sita is part of local religious tradition.",
+    significance: "A local Hindu pilgrimage destination.",
+    location: "Punaura, Sitamarhi district, Bihar",
+    howToReach: "The official tourist listing does not specify current public transport or visitor timings; confirm locally before travel.",
+    historySources: [
+      { label: "Sitamarhi District Administration — Tourist Places", url: "https://sitamarhi.nic.in/tourist-places/" },
+    ],
+    image: TOURISM_DESTINATION_IMAGES.Sitamarhi.src,
+    featured: true,
+  },
   {
     id: "simultala-hill-station",
     name: "Simultala Hill Station",
@@ -614,45 +1077,44 @@ export const TOURISM_PLACES: TourismPlace[] = [
       { label: "Jamui District Administration — Places of Interest", url: "https://jamui.nic.in/places-of-interest/" },
     ],
     image: "/tourism/jamui/minto_tower.png",
-    lat: 24.8581,
-    lng: 86.3003,
-    featured: true,
-  },
-  {
-    id: "giddheshwar-mandir",
-    name: "Giddheshwar/Gidheshwar Mandir",
-    district: "Jamui",
-    category: "Religious / Shiva temple",
-    description: "A Shiva temple on rocky boulders, about 15 km south of Jamui headquarters according to the District Administration.",
-    overview: "The District Administration describes Giddheswar as a temple of Lord Shiva on top of stone boulders.",
-    historicalBackground: "The official source reviewed does not provide a founding date, historical chronology, or associated documented event. No legend is presented as historical fact.",
-    significance: "A Hindu Shaiva place of worship, located on a rocky outcrop according to the District Administration.",
-    location: "About 15 km south of Jamui district headquarters, as listed by the District Administration.",
-    howToReach: "The District Administration gives the approximate distance from headquarters but no transport instructions. Use the existing map directions for navigation; official hours and entry fee were not found.",
-    historySources: [
-      { label: "Jamui District Administration — Places of Interest", url: "https://jamui.nic.in/places-of-interest/" },
-    ],
-    image: "/tourism/jamui/giddheshwar.png",
-    lat: 24.8579,
-    lng: 86.3004,
+    lat: 24.8735,
+    lng: 86.2296,
   },
   {
     id: "patneshwar-mandir",
     name: "Patneshwar Mandir",
     district: "Jamui",
     category: "Religious / Temple",
-    description: "A Shiva temple on Station Road, about 5 km north of Jamui headquarters according to the District Administration.",
-    overview: "The District Administration lists Patneswar Mandir as a temple of Lord Shiva on Station Road, Jamui.",
-    historicalBackground: "The official source reviewed provides no construction date, medieval-period attribution, architectural dating, or historical event. Evigo's previous description included those claims, but they are not corroborated by the official source reviewed and are not repeated here as established facts.",
-    significance: "A local Hindu place of worship dedicated to Lord Shiva, as described by the District Administration.",
-    location: "On Station Road, about 5 km north of Jamui headquarters, according to the District Administration.",
-    howToReach: "The District Administration gives the Station Road location and approximate distance. Official transport instructions, timings, and entry fee were not found.",
+    description: "Hindu temple at Patneshwar Hill, noted for Shiva worship and seasonal fairs according to the District Administration.",
+    overview: "The District Administration identifies this as a Shiva temple on Patneshwar Hill.",
+    historicalBackground: "The official sources reviewed do not provide a construction date or historical chronology. The District Administration notes seasonal fairs; this is a continuing local religious tradition.",
+    significance: "A Hindu place of worship dedicated to Lord Shiva and the venue of locally noted seasonal fairs.",
+    location: "Patneshwar Hill, Jamui district. The existing Evigo map coordinates are retained.",
+    howToReach: "The official district source reviewed does not publish a route or transport guidance. Use the existing map directions for navigation.",
     historySources: [
       { label: "Jamui District Administration — Places of Interest", url: "https://jamui.nic.in/places-of-interest/" },
     ],
     image: "/tourism/jamui/patneshwar.png",
-    lat: 24.9208,
-    lng: 86.1754,
+    lat: 24.8434,
+    lng: 86.1686,
+  },
+  {
+    id: "giddheshwar-temple",
+    name: "Giddheshwar Temple",
+    district: "Jamui",
+    category: "Religious / Temple",
+    description: "Hindu temple dedicated to Lord Shiva; the District Administration notes scenic surroundings and seasonal fairs.",
+    overview: "The District Administration identifies this as a Shiva temple and notes scenic surroundings.",
+    historicalBackground: "The official sources reviewed do not give a construction date or historical chronology. The District Administration records seasonal fairs; this is a continuing local religious tradition.",
+    significance: "A Hindu place of worship dedicated to Lord Shiva, set in scenic surroundings according to the District Administration.",
+    location: "Giddheshwar Temple area, Jamui district. The existing Evigo map coordinates are retained.",
+    howToReach: "The official district source reviewed does not publish a route or transport guidance. Use the existing map directions for navigation.",
+    historySources: [
+      { label: "Jamui District Administration — Places of Interest", url: "https://jamui.nic.in/places-of-interest/" },
+    ],
+    image: "/tourism/jamui/giddheshwar_actual.jpg",
+    lat: 24.8954,
+    lng: 86.2041,
   },
   {
     id: "nagi-dam-bhimbandh",
@@ -671,6 +1133,5 @@ export const TOURISM_PLACES: TourismPlace[] = [
     image: "/tourism/jamui/nagi_dam.png",
     lat: 24.8175,
     lng: 86.4000,
-    featured: true,
   },
 ];

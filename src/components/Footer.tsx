@@ -4,14 +4,13 @@ import Link from "next/link";
 import { PageContainer } from "@/components/PageContainer";
 
 const QUICK_LINKS = [
+  { label: "Home", href: "/" },
+  { label: "Combo Packs", href: "/combo-packs" },
   { label: "Events", href: "/events" },
   { label: "Travel & Tourism", href: "/travel-tourism" },
-  { label: "Explore Providers", href: "/explore" },
-  { label: "Hotel Partners", href: "/hotels" },
-  { label: "Jamui Tourism", href: "/services/tourism" },
-  { label: "Become a Partner", href: "/partner" },
-  { label: "Client Login", href: "/login/client" },
-  { label: "Provider Login", href: "/login/provider" },
+  { label: "Hotels & Venues", href: "/hotels" },
+  { label: "About", href: "/about" },
+  { label: "Contact", href: "/contact" },
 ];
 
 const SERVICES = [
@@ -20,6 +19,17 @@ const SERVICES = [
   "DJ",
   "Mehendi & Makeup",
   "Restaurant",
+];
+
+const TOURISM_LINKS = [
+  { label: "Jamui Tourism", href: "/services/tourism" },
+  { label: "Patna", href: "/services/tourism?district=Patna" },
+  { label: "Gaya & Bodh Gaya", href: "/services/tourism?district=Gaya" },
+  { label: "Rajgir", href: "/services/tourism?district=Rajgir" },
+  { label: "Nalanda", href: "/services/tourism?district=Nalanda" },
+  { label: "Vaishali", href: "/services/tourism?district=Vaishali" },
+  { label: "Madhubani", href: "/services/tourism?district=Madhubani" },
+  { label: "Sitamarhi", href: "/services/tourism?district=Sitamarhi" },
 ];
 
 const SOCIAL_LINKS = [
@@ -61,12 +71,12 @@ export function Footer() {
     <footer
       className="w-full"
       style={{
-        background: "linear-gradient(180deg, #09090b 0%, #050311 50%, #09090b 100%)",
-        borderTop: "1px solid rgba(139,92,246,0.12)",
+        background: "linear-gradient(180deg, #0f172a 0%, #1e293b 100%)",
+        borderTop: "1px solid rgba(255,255,255,0.1)",
       }}
     >
       <PageContainer className="py-14 sm:py-16">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 sm:gap-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-10 sm:gap-8">
           {/* Brand Column */}
           <div className="sm:col-span-2 lg:col-span-1">
             <Link href="/" style={{ textDecoration: "none" }}>
@@ -88,7 +98,7 @@ export function Footer() {
                 marginTop: 14,
                 fontSize: 14,
                 lineHeight: 1.7,
-                color: "#9ca3af",
+                color: "#94a3b8",
                 maxWidth: 280,
               }}
             >
@@ -107,12 +117,12 @@ export function Footer() {
                     width: 38,
                     height: 38,
                     borderRadius: 10,
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    background: "rgba(255,255,255,0.03)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    background: "rgba(255,255,255,0.05)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    color: "#9ca3af",
+                    color: "#94a3b8",
                     textDecoration: "none",
                     transition: "all 0.2s",
                   }}
@@ -145,7 +155,41 @@ export function Footer() {
                     href={link.href}
                     style={{
                       fontSize: 14,
-                      color: "#9ca3af",
+                      color: "#94a3b8",
+                      textDecoration: "none",
+                      transition: "color 0.2s",
+                    }}
+                    className="hover:text-white"
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Tourism Links */}
+          <div>
+            <h4
+              style={{
+                fontSize: 13,
+                fontWeight: 700,
+                color: "#fff",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+                marginBottom: 16,
+              }}
+            >
+              Tourism
+            </h4>
+            <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+              {TOURISM_LINKS.map((link) => (
+                <li key={link.label} style={{ marginBottom: 10 }}>
+                  <Link
+                    href={link.href}
+                    style={{
+                      fontSize: 14,
+                      color: "#94a3b8",
                       textDecoration: "none",
                       transition: "color 0.2s",
                     }}
@@ -179,7 +223,7 @@ export function Footer() {
                     href={s === "Restaurant" ? "/hotels" : `/explore?category=${encodeURIComponent(s)}`}
                     style={{
                       fontSize: 14,
-                      color: "#9ca3af",
+                      color: "#94a3b8",
                       textDecoration: "none",
                       transition: "color 0.2s",
                     }}
@@ -238,14 +282,14 @@ export function Footer() {
                   </svg>
                 </div>
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                     Email
                   </div>
                   <a
                     href="mailto:support.evigo@gmail.com"
                     style={{
                       fontSize: 14,
-                      color: "#9ca3af",
+                      color: "#94a3b8",
                       textDecoration: "none",
                       transition: "color 0.2s",
                       wordBreak: "break-all",
@@ -287,14 +331,14 @@ export function Footer() {
                   </svg>
                 </div>
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                     Contact No.
                   </div>
                   <a
                     href="tel:+917808807340"
                     style={{
                       fontSize: 14,
-                      color: "#9ca3af",
+                      color: "#94a3b8",
                       textDecoration: "none",
                       transition: "color 0.2s",
                     }}
@@ -336,10 +380,10 @@ export function Footer() {
                   </svg>
                 </div>
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                     Location
                   </div>
-                  <div style={{ fontSize: 14, color: "#9ca3af", lineHeight: 1.4 }}>
+                  <div style={{ fontSize: 14, color: "#94a3b8", lineHeight: 1.4 }}>
                     Samastipur, Bihar, India
                   </div>
                 </div>
@@ -353,7 +397,7 @@ export function Footer() {
           style={{
             marginTop: 48,
             paddingTop: 24,
-            borderTop: "1px solid rgba(255,255,255,0.06)",
+            borderTop: "1px solid rgba(255,255,255,0.1)",
             display: "flex",
             flexWrap: "wrap",
             justifyContent: "space-between",
@@ -361,21 +405,21 @@ export function Footer() {
             gap: 12,
           }}
         >
-          <div style={{ fontSize: 13, color: "#6b7280" }}>
+          <div style={{ fontSize: 13, color: "#64748b" }}>
             &copy; {new Date().getFullYear()} Evigo. All rights reserved.
           </div>
           <div style={{ display: "flex", gap: 20 }}>
             <Link
-              href="/privacy"
-              style={{ fontSize: 13, color: "#6b7280", textDecoration: "none" }}
-              className="hover:text-gray-400"
+              href="/privacy-policy"
+              style={{ fontSize: 13, textDecoration: "none" }}
+              className="rounded-sm text-[#64748b] transition-colors hover:text-gray-400 active:text-cyan-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-400"
             >
               Privacy Policy
             </Link>
             <Link
-              href="/terms"
-              style={{ fontSize: 13, color: "#6b7280", textDecoration: "none" }}
-              className="hover:text-gray-400"
+              href="/terms-and-conditions"
+              style={{ fontSize: 13, textDecoration: "none" }}
+              className="rounded-sm text-[#64748b] transition-colors hover:text-gray-400 active:text-cyan-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-cyan-400"
             >
               Terms of Service
             </Link>
